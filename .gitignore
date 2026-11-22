@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.angular/
+out-tsc/
+*.log
+coverage/
+
+# Variables de entorno: solo se versiona la plantilla
+.env.*
+!.env.example
+
+# Configuracion local de herramientas
+.claude/settings.local.json
+.vscode/
+*.zip
