@@ -53,11 +53,18 @@ function lotes(texto) {
   for (const f of archivos) {
     const version = Number(f.slice(0, 3));
     const texto = fs.readFileSync(path.join(DIR, f), 'utf8');
-    const hash = crypto.createHash('sha256').update(texto).digest('hex');
+    // El hash no depende del fin de linea: Git puede entregar el mismo archivo
+    // con CRLF (Windows) o LF (Linux/Mac, p. ej. el servidor de despliegue).
+    // Se guarda el hash normalizado a LF y se aceptan tambien los hashes que
+    // se guardaron antes con el contenido en CRLF.
+    const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const lf = texto.replace(/\r\n/g, '\n');
+    const hash = sha(lf);
+    const equivalentes = new Set([hash, sha(lf.replace(/\n/g, '\r\n'))]);
     const previa = aplicadas.get(version);
 
     if (previa) {
-      if (previa.sha256 !== hash) {
+      if (!equivalentes.has(previa.sha256)) {
         throw new Error(`La migracion ${f} cambio despues de aplicarse. Crea una migracion nueva.`);
       }
       console.log(`  [aplicada]  ${f}`);
