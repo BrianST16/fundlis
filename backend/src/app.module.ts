@@ -20,6 +20,7 @@ import { LocalModule } from './local/local.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { TareasModule } from './tareas/tareas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
+import { TrazabilidadModule } from './trazabilidad/trazabilidad.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     NotificacionesModule,
     AuthModule,
     UsuariosModule,
+    TrazabilidadModule,
     CategoriasModule,
     CaracterizacionModule,
     EvidenciasModule,

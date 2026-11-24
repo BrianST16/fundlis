@@ -309,6 +309,8 @@ export class AsignacionesService {
     auxiliarId: number,
     p: { prioridad: { total: number; sisben: number; caracterizacion: number; antiguedad: number }; coeficientes: string },
     posteriores: Posterior[],
+    /** Texto extra para el historial (p. ej. de que asignacion viene). */
+    contexto?: string,
   ): Promise<number> {
     const lote = await this.bloquearLote(mgr, loteId);
     if (lote.ubicacion !== 'EN_LIS') throw new BadRequestException('El lote ya no esta en el LIS.');
@@ -316,8 +318,16 @@ export class AsignacionesService {
       where: { loteId, estado: In([EstadoAsignacion.EN_CUSTODIA, EstadoAsignacion.DEVOLUCION]) },
     });
     if (ocupado) throw new BadRequestException(`El lote ya esta en la asignacion ${ocupado.id}.`);
-    const enLocal = await mgr.getRepository(DestinoLocal).findOne({ where: { loteId, estado: 'CUSTODIA_TEMPORAL' } });
-    if (enLocal) throw new BadRequestException('El lote esta en custodia LOCAL: reasignalo desde LOCAL.');
+    const enLocal = await mgr.getRepository(DestinoLocal).findOne({
+      where: { loteId, estado: In(['CUSTODIA_TEMPORAL', 'PROPUESTO_DONADOR', 'POR_DEVOLVER']) },
+    });
+    if (enLocal && enLocal.estado !== 'CUSTODIA_TEMPORAL') {
+      throw new BadRequestException(
+        enLocal.estado === 'PROPUESTO_DONADOR'
+          ? `El lote esta en propuesta al donador (LOCAL ${enLocal.id}): espera su respuesta o retira la propuesta.`
+          : `El donador rechazo que quede en el LIS (LOCAL ${enLocal.id}): hay que devolverselo.`,
+      );
+    }
 
     const oferta = await mgr.getRepository(Oferta).findOne({ where: { id: lote.ofertaId } });
     const peticion = await this.bloquearPeticion(mgr, peticionId);
@@ -331,6 +341,18 @@ export class AsignacionesService {
     await this.exigirPeticionLibre(mgr, peticion.id);
 
     const ahora = new Date();
+    // D-50: lo que esta en custodia temporal LOCAL se empareja directo, sin
+    // esperar recepcion: el destino LOCAL se cierra en la misma transaccion.
+    if (enLocal) {
+      enLocal.estado = 'REASIGNADO';
+      enLocal.cerradoEn = ahora;
+      enLocal.motivoCierre = `Emparejado con la peticion ${peticion.id} desde custodia temporal`;
+      await mgr.getRepository(DestinoLocal).save(enLocal);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.LOCAL, entidadId: enLocal.id, estadoAnterior: 'CUSTODIA_TEMPORAL', estadoNuevo: 'REASIGNADO', actorId: auxiliarId, motivo: enLocal.motivoCierre },
+        mgr,
+      );
+    }
     const repo = mgr.getRepository(OfertaXPeticion);
     const creada = await repo.save(
       repo.create({
@@ -358,12 +380,12 @@ export class AsignacionesService {
         estadoAnterior: null,
         estadoNuevo: EstadoAsignacion.EN_CUSTODIA,
         actorId: auxiliarId,
-        motivo: `Reasignacion del lote ${lote.id} (${lote.cantidad} u.) que ya estaba en el LIS a la peticion ${peticion.id}. Sin nueva recepcion.`,
+        motivo: `Reasignacion del lote ${lote.id} (${lote.cantidad} u.) que ya estaba en el LIS a la peticion ${peticion.id}${contexto ? ` ${contexto}` : ''}. Sin nueva recepcion.`,
       },
       mgr,
     );
     await this.historial.registrar(
-      { entidad: EntidadHistorial.LOTE, entidadId: lote.id, estadoAnterior: 'SIN_DESTINO', estadoNuevo: 'REASIGNADO', actorId: auxiliarId, motivo: `Asignacion ${creada.id}` },
+      { entidad: EntidadHistorial.LOTE, entidadId: lote.id, estadoAnterior: enLocal ? 'CUSTODIA_LOCAL' : 'SIN_DESTINO', estadoNuevo: 'REASIGNADO', actorId: auxiliarId, motivo: `Asignacion ${creada.id}` },
       mgr,
     );
 
@@ -377,8 +399,81 @@ export class AsignacionesService {
         entidadId: creada.id,
         clave: `ASIGNACION:${creada.id}:EN_CUSTODIA`,
       });
+      // Correccion 6: el donador tambien se entera de que su producto, que
+      // ya estaba en el LIS, tiene un nuevo beneficiario. Sin identidades (D-42).
+      if (oferta?.donadorId) {
+        await this.notificaciones.aUsuarios([oferta.donadorId], {
+          tipo: 'DONACION_REASIGNADA',
+          titulo: 'Tu donacion fue reasignada',
+          mensaje: `Tu donacion "${recorte(oferta.nombreProducto)}" (${lote.cantidad} unidades), que ya esta bajo custodia del LIS, fue reasignada a otro beneficiario. No necesitas hacer nada.`,
+          entidad: 'ASIGNACION',
+          entidadId: creada.id,
+          clave: `ASIGNACION:${creada.id}:REASIGNADA`,
+        });
+      }
     });
     return creada.id;
+  }
+
+  // ------------------------------------------------------------------
+  // Reasignacion DIRECTA de un producto que esta EN_CUSTODIA (correccion 6)
+  // ------------------------------------------------------------------
+  /**
+   * El producto ya esta fisicamente en el LIS: NO se repite la recepcion.
+   * En UNA sola transaccion:
+   *  1. se cancela el intento actual (la peticion original se cierra por
+   *     incumplimiento, D-16) y el lote queda momentaneamente sin destino;
+   *  2. se crea el intento nuevo directamente EN_CUSTODIA sobre el mismo
+   *     lote (reasignarLoteEn), sin movimiento ni foto nuevos;
+   *  3. todo queda en HISTORIAL_ESTADO (intento viejo, intento nuevo, lote).
+   * Si algo falla (p. ej. la peticion destino no es compatible), no se
+   * cancela nada. Se avisa al estudiante original, al nuevo y al donador.
+   */
+  async reasignarDesdeCustodia(id: number, peticionId: number, motivo: string, auxiliarId: number) {
+    const { prioridad, coeficientes } = await this.emparejamiento.prioridadDe(peticionId);
+    const posteriores: Posterior[] = [];
+    const nuevaId = await this.dataSource.transaction(async (mgr) => {
+      const a = await this.bloquearAsignacion(mgr, id);
+      if (a.estado !== EstadoAsignacion.EN_CUSTODIA || !a.loteId) {
+        throw new BadRequestException(
+          `Solo se reasigna directamente un producto EN_CUSTODIA (ya recibido en el LIS). Esta asignacion esta en ${a.estado}.`,
+        );
+      }
+      if (a.peticionId === peticionId) {
+        throw new BadRequestException('Elige una peticion distinta de la que ya tiene el producto.');
+      }
+      const loteId = a.loteId;
+
+      const cancelado = (await this.cancelar(a.id, `Reasignacion: ${motivo}`, auxiliarId, mgr, {
+        paraReasignar: true,
+      })) as { id: number; posteriores: Posterior[] };
+      posteriores.push(...cancelado.posteriores);
+
+      const nueva = await this.reasignarLoteEn(
+        mgr,
+        loteId,
+        peticionId,
+        auxiliarId,
+        { prioridad, coeficientes },
+        posteriores,
+        `desde la asignacion ${a.id} (EN_CUSTODIA)`,
+      );
+      await this.historial.registrar(
+        {
+          entidad: EntidadHistorial.ASIGNACION,
+          entidadId: a.id,
+          estadoAnterior: EstadoAsignacion.CANCELADO,
+          estadoNuevo: 'REASIGNADA',
+          actorId: auxiliarId,
+          motivo: `Producto reasignado a la asignacion ${nueva} (peticion ${peticionId}) sin nueva recepcion: ${motivo}`,
+        },
+        mgr,
+      );
+      return nueva;
+    });
+
+    await this.avisar(posteriores);
+    return this.detalle(nuevaId, { sub: auxiliarId, esPersonalLis: true } as UsuarioActual);
   }
 
   // ------------------------------------------------------------------
@@ -612,16 +707,19 @@ export class AsignacionesService {
           entidadId: a.id,
           clave: `ASIGNACION:${a.id}:ENTREGADO`,
         });
-        if (a.origen === 'DONADOR') {
-          await this.notificaciones.aUsuarios([oferta.donadorId], {
-            tipo: 'ENTREGA_REGISTRADA',
-            titulo: 'Tu donacion llego a su destino',
-            mensaje: `Tu donacion "${recorte(oferta.nombreProducto)}" fue entregada a un estudiante. Gracias por tu aporte.`,
-            entidad: 'ASIGNACION',
-            entidadId: a.id,
-            clave: `ASIGNACION:${a.id}:ENTREGADO`,
-          });
-        }
+        // Correccion 9 / D-51: el donador recibe la FOTO de la entrega por la
+        // bandeja interna (no por correo). Tambien cuando el producto llego
+        // por reasignacion o desde LOCAL: sigue siendo su donacion.
+        await this.notificaciones.aUsuarios([oferta.donadorId], {
+          tipo: 'ENTREGA_REGISTRADA',
+          titulo: 'Tu donacion llego a su destino',
+          mensaje: `Tu donacion "${recorte(oferta.nombreProducto)}" (${datos.cantidad} u.) fue entregada a un estudiante. Adjuntamos la foto de la entrega. Gracias por tu aporte.`,
+          entidad: 'ASIGNACION',
+          entidadId: a.id,
+          clave: `ASIGNACION:${a.id}:ENTREGADO`,
+          evidenciaId: evidencia.id,
+          soloBandeja: true,
+        });
       });
       return a.id;
     });
@@ -641,7 +739,15 @@ export class AsignacionesService {
    *    por incumplimiento (D-16) y el LOTE queda en el LIS SIN DESTINO, para
    *    reasignarlo, pasarlo a custodia LOCAL o devolverlo.
    */
-  async cancelar(id: number, motivo: string, auxiliarId: number, mgrExterno?: EntityManager) {
+  async cancelar(
+    id: number,
+    motivo: string,
+    auxiliarId: number,
+    mgrExterno?: EntityManager,
+    /** paraReasignar: el lote se reasigna en la misma transaccion, asi que
+     *  no se avisa al LIS de un "lote sin destino" que no lo estara. */
+    opciones: { paraReasignar?: boolean } = {},
+  ) {
     const posteriores: Posterior[] = [];
     const ejecutar = async (mgr: EntityManager) => {
       const a = await this.bloquearAsignacion(mgr, id);
@@ -679,6 +785,7 @@ export class AsignacionesService {
             entidadId: a.id,
             clave: `ASIGNACION:${a.id}:CANCELADO`,
           });
+          if (opciones.paraReasignar) return;
           await this.notificaciones.aPersonalLis({
             tipo: 'LOTE_SIN_DESTINO',
             titulo: 'Lote sin destino',

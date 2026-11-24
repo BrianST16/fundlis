@@ -5,11 +5,16 @@ export enum Perfil {
   DONADOR = 'DONADOR',
 }
 
-/** Roles administrativos adicionales. Solo los otorga un administrador
- *  (salvo el bootstrap por ADMIN_EMAILS). */
+/** Roles administrativos adicionales.
+ *  - AUXILIAR_LIS: lo otorga un administrador.
+ *  - ADMINISTRADOR: solo lo otorga/quita un SUPERUSUARIO (salvo el
+ *    bootstrap por ADMIN_EMAILS).
+ *  - SUPERUSUARIO: mantenimiento con acceso total. Solo se asigna por
+ *    script de BD (db/scripts/asignar_superusuario.sql), nunca por la API. */
 export enum Rol {
   AUXILIAR_LIS = 'AUXILIAR_LIS',
   ADMINISTRADOR = 'ADMINISTRADOR',
+  SUPERUSUARIO = 'SUPERUSUARIO',
 }
 
 export enum EstadoOferta {
@@ -69,3 +74,6 @@ export const PETICION_CUENTA_LIMITE: EstadoPeticion[] = [
 ];
 
 export const MIMES_EVIDENCIA = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** Formatos aceptados para el certificado de estudio (D-46). */
+export const MIMES_CERTIFICADO = ['application/pdf', 'image/jpeg', 'image/png'];

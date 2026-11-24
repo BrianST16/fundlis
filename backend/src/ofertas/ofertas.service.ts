@@ -305,7 +305,29 @@ export class OfertasService {
     return this.detalle(id, donadorId, false);
   }
 
-  async aprobar(id: number, revisorId: number) {
+  /**
+   * D-47: conflicto de interes en la revision de la propia donacion.
+   * Un AUXILIAR_LIS no aprueba ni rechaza sus propias ofertas (las revisa
+   * otro auxiliar o un administrador). El ADMINISTRADOR (y el SUPERUSUARIO,
+   * que lo hereda) si puede, y queda marcado en el historial.
+   * Se valida aqui, en el backend; ocultar botones en Angular no basta.
+   */
+  private validarRevisionPropia(
+    oferta: Oferta,
+    revisorId: number,
+    revisorEsAdministrador: boolean,
+    accion: 'aprobar' | 'rechazar',
+  ): boolean {
+    const esPropia = oferta.donadorId === revisorId;
+    if (esPropia && !revisorEsAdministrador) {
+      throw new ForbiddenException(
+        `No puedes ${accion} tu propia donacion: debe revisarla otro auxiliar o un administrador.`,
+      );
+    }
+    return esPropia;
+  }
+
+  async aprobar(id: number, revisorId: number, revisorEsAdministrador = false) {
     const oferta = await this.ofertas.findOne({ where: { id } });
     if (!oferta) throw new NotFoundException('La oferta no existe.');
     if (oferta.estado !== EstadoOferta.PENDIENTE_APROBACION) {
@@ -313,9 +335,7 @@ export class OfertasService {
         `Solo se aprueban ofertas pendientes. Esta esta en ${oferta.estado}.`,
       );
     }
-    if (oferta.donadorId === revisorId) {
-      throw new BadRequestException('No puedes aprobar tu propia oferta.');
-    }
+    const esPropia = this.validarRevisionPropia(oferta, revisorId, revisorEsAdministrador, 'aprobar');
 
     oferta.estado = EstadoOferta.APROBADA;
     oferta.revisadaPor = revisorId;
@@ -329,7 +349,9 @@ export class OfertasService {
       estadoAnterior: EstadoOferta.PENDIENTE_APROBACION,
       estadoNuevo: EstadoOferta.APROBADA,
       actorId: revisorId,
-      motivo: 'Aprobada por el personal del LIS',
+      motivo: esPropia
+        ? 'Autoaprobada por un administrador (su propia donacion)'
+        : 'Aprobada por el personal del LIS',
     });
     await this.notificaciones.aUsuarios([oferta.donadorId], {
       tipo: 'OFERTA_APROBADA',
@@ -343,7 +365,7 @@ export class OfertasService {
     return this.detalle(id, revisorId, true);
   }
 
-  async rechazar(id: number, revisorId: number, motivo: string) {
+  async rechazar(id: number, revisorId: number, motivo: string, revisorEsAdministrador = false) {
     const oferta = await this.ofertas.findOne({ where: { id } });
     if (!oferta) throw new NotFoundException('La oferta no existe.');
     if (oferta.estado !== EstadoOferta.PENDIENTE_APROBACION) {
@@ -351,6 +373,7 @@ export class OfertasService {
         `Solo se rechazan ofertas pendientes. Esta esta en ${oferta.estado}.`,
       );
     }
+    this.validarRevisionPropia(oferta, revisorId, revisorEsAdministrador, 'rechazar');
 
     oferta.estado = EstadoOferta.RECHAZADA;
     oferta.revisadaPor = revisorId;

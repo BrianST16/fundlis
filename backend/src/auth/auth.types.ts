@@ -11,7 +11,10 @@ export interface PayloadJwt {
 
 /** Usuario autenticado tal como lo ve un controlador. */
 export interface UsuarioActual extends PayloadJwt {
+  /** Rol de mantenimiento. Implica esAdministrador. */
+  esSuperusuario: boolean;
   esAuxiliar: boolean;
+  /** true para ADMINISTRADOR y para SUPERUSUARIO. */
   esAdministrador: boolean;
   esPersonalLis: boolean;
 }

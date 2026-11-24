@@ -30,6 +30,8 @@ export type DecisionTarea =
   | 'REASIGNAR'
   | 'DEVOLUCION'
   | 'CUSTODIA_LOCAL'
+  /** D-50: propuesta LOCAL sin respuesta del donador. */
+  | 'RETIRAR_PROPUESTA'
   | 'SIN_ACCION';
 
 /** Tarea DEFINIR_ESTADO (D-23). Idempotente por clave. */
@@ -104,6 +106,10 @@ export class Notificacion {
 
   @Column({ name: 'clave', type: 'varchar', length: 160 })
   clave: string;
+
+  /** D-51: foto adjunta (p. ej. entrega final). Solo la ve el destinatario. */
+  @Column({ name: 'evidencia_id', type: 'int', nullable: true })
+  evidenciaId: number | null;
 
   @CreateDateColumn({ name: 'creada_en', type: 'datetime2' })
   creadaEn: Date;

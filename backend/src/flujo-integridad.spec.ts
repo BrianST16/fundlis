@@ -13,7 +13,12 @@ import {
 import { PeticionesService } from './peticiones/peticiones.service';
 
 /** QueryBuilder doble: devuelve resultados segun la entidad consultada. */
-function gestorTransaccional(resultados: Record<string, { one?: any; many?: any[] }>, repos: Record<string, any>) {
+/** `secuencia`: resultados sucesivos de getOne (cuando una misma entidad se
+ *  consulta varias veces con filtros distintos); agotada, se usa `one`. */
+function gestorTransaccional(
+  resultados: Record<string, { one?: any; many?: any[]; secuencia?: any[] }>,
+  repos: Record<string, any>,
+) {
   return {
     createQueryBuilder: jest.fn((entidad: any) => {
       const r = resultados[entidad.name] ?? {};
@@ -21,7 +26,7 @@ function gestorTransaccional(resultados: Record<string, { one?: any; many?: any[
         setLock: () => qb,
         where: () => qb,
         andWhere: () => qb,
-        getOne: jest.fn(async () => r.one ?? null),
+        getOne: jest.fn(async () => (r.secuencia?.length ? r.secuencia.shift() : (r.one ?? null))),
         getMany: jest.fn(async () => r.many ?? []),
       };
       return qb;
@@ -120,6 +125,8 @@ describe('AsignacionesService', () => {
     ocupado?: any;
     enLocal?: any;
     entidades?: Record<string, any>;
+    /** getOne sucesivos sobre OFERTA_X_PETICION (bloqueo, peticion libre...). */
+    secuenciaAsignacion?: any[];
   }) {
     const asignaciones: any = {
       findOne: jest.fn(async () => ({ id: 99, oferta: {}, peticion: {}, movimientos: [] })),
@@ -147,13 +154,13 @@ describe('AsignacionesService', () => {
       update: jest.fn(),
     };
     const repoLote = { update: jest.fn(), find: jest.fn(async () => []), create: jest.fn((x) => x), save: jest.fn(async (x) => ({ ...x, id: 70 })) };
-    const repoLocal = { find: jest.fn(async () => []), findOne: jest.fn(async () => opc.enLocal ?? null) };
+    const repoLocal = { find: jest.fn(async () => []), findOne: jest.fn(async () => opc.enLocal ?? null), save: jest.fn(async (x: any) => x) };
     const repoGenerico = (valor: any) => ({ findOne: jest.fn(async () => valor), save: jest.fn(async (x) => x), create: jest.fn((x) => x) });
     const mgr = gestorTransaccional(
       {
         Oferta: { one: opc.oferta },
         Peticion: { one: opc.peticion },
-        OfertaXPeticion: { one: opc.asignacion ?? null, many: opc.intentos ?? [] },
+        OfertaXPeticion: { one: opc.asignacion ?? null, many: opc.intentos ?? [], secuencia: opc.secuenciaAsignacion },
         LoteFisico: { one: opc.lote ?? null },
       },
       {
@@ -185,7 +192,7 @@ describe('AsignacionesService', () => {
       calendario,
       parametros,
     );
-    return { s, repoOxp, repoMov, repoLote, evidencias, notificaciones, calendario, emparejamiento };
+    return { s, repoOxp, repoMov, repoLote, repoLocal, evidencias, notificaciones, calendario, emparejamiento, dataSource, historial };
   }
 
   const oferta = { id: 1, estado: EstadoOferta.APROBADA, cantidad: 10, categoriaId: 2, donadorId: 7, nombreProducto: 'Chaqueta', estadoConservacion: 4, medida: 3 };
@@ -245,6 +252,30 @@ describe('AsignacionesService', () => {
     expect(evidencias.guardar).not.toHaveBeenCalled();
   });
 
+  it('D-50: un lote en custodia temporal LOCAL se empareja directo y el destino LOCAL se cierra en la misma transaccion', async () => {
+    const { s, repoOxp, repoMov, repoLocal } = servicio({
+      peticion: { ...peticion, estado: EstadoPeticion.APROBADA },
+      lote: { id: 70, ubicacion: 'EN_LIS', ofertaId: 1, cantidad: 2 },
+      enLocal: { id: 33, estado: 'CUSTODIA_TEMPORAL', loteId: 70 },
+      entidades: { Oferta: oferta },
+    });
+    await s.reasignarLote(70, 5, 1);
+    expect(repoLocal.save).toHaveBeenCalledWith(expect.objectContaining({ id: 33, estado: 'REASIGNADO' }));
+    expect(repoOxp.save).toHaveBeenCalledWith(expect.objectContaining({ estado: EstadoAsignacion.EN_CUSTODIA, loteId: 70 }));
+    expect(repoMov.save).not.toHaveBeenCalled(); // sin esperar recepcion
+  });
+
+  it('D-50: un lote con propuesta al donador NO se puede emparejar', async () => {
+    const { s, repoOxp } = servicio({
+      peticion: { ...peticion, estado: EstadoPeticion.APROBADA },
+      lote: { id: 70, ubicacion: 'EN_LIS', ofertaId: 1, cantidad: 2 },
+      enLocal: { id: 33, estado: 'PROPUESTO_DONADOR', loteId: 70 },
+      entidades: { Oferta: oferta },
+    });
+    await expect(s.reasignarLote(70, 5, 1)).rejects.toThrow('propuesta al donador');
+    expect(repoOxp.save).not.toHaveBeenCalled();
+  });
+
   it('no reasigna un lote que ya tiene titular', async () => {
     const { s } = servicio({
       peticion,
@@ -263,6 +294,81 @@ describe('AsignacionesService', () => {
     });
     await s.cancelar(40, 'No recogio en el plazo', 1);
     expect(repoLote.update).toHaveBeenCalledWith({ id: 70 }, expect.objectContaining({ sinDestinoDesde: expect.any(Date) }));
+  });
+
+  // -------------------------------------------------------------------------
+  // Correccion 6 — reasignacion directa de un producto EN_CUSTODIA
+  // -------------------------------------------------------------------------
+  const enCustodia = () => ({
+    id: 40, estado: EstadoAsignacion.EN_CUSTODIA, loteId: 70, ofertaId: 1, peticionId: 4, cantidadAsignada: 2,
+  });
+  // Peticion original (la que se cierra) y peticion destino: objetos distintos.
+  const peticionOriginal = () => ({ id: 4, estado: EstadoPeticion.APROBADA, estudianteId: 9, descripcion: 'Peticion original' });
+  // Destino siempre nuevo: otras pruebas mutan la constante `peticion`.
+  const destinoAprobado = () => ({ ...peticion, estado: EstadoPeticion.APROBADA });
+  const escenarioReasignacion = (destino: any = destinoAprobado()) => {
+    const a = enCustodia();
+    return servicio({
+      asignacion: a,
+      // 1) bloqueo en reasignarDesdeCustodia, 2) bloqueo en cancelar,
+      // 3) "la peticion destino ya tiene intento vigente?" -> no.
+      secuenciaAsignacion: [a, a, null],
+      lote: { id: 70, ubicacion: 'EN_LIS', ofertaId: 1, cantidad: 2 },
+      peticion: destino,
+      entidades: { Oferta: oferta, Peticion: peticionOriginal() },
+    });
+  };
+
+  it('C6: reasigna EN_CUSTODIA -> nuevo intento EN_CUSTODIA en UNA transaccion, sin nueva recepcion', async () => {
+    const { s, repoOxp, repoMov, evidencias, dataSource } = escenarioReasignacion();
+    await s.reasignarDesdeCustodia(40, 5, 'El estudiante no recogio', 1);
+
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    const guardados = repoOxp.save.mock.calls.map((c: any) => c[0]);
+    expect(guardados[0]).toMatchObject({ id: 40, estado: EstadoAsignacion.CANCELADO });
+    expect(guardados[1]).toMatchObject({
+      estado: EstadoAsignacion.EN_CUSTODIA, origen: 'REASIGNACION', loteId: 70, peticionId: 5, cantidadAsignada: 2,
+    });
+    expect(repoMov.save).not.toHaveBeenCalled(); // sin recepcion repetida
+    expect(evidencias.guardar).not.toHaveBeenCalled(); // sin foto nueva
+  });
+
+  it('C6: queda en el historial (intento viejo REASIGNADA, intento nuevo EN_CUSTODIA, lote)', async () => {
+    const { s, historial } = escenarioReasignacion();
+    await s.reasignarDesdeCustodia(40, 5, 'El estudiante no recogio', 1);
+    const estados = historial.registrar.mock.calls.map((c: any) => `${c[0].entidad}:${c[0].estadoNuevo}`);
+    expect(estados).toEqual(
+      expect.arrayContaining(['ASIGNACION:CANCELADO', 'ASIGNACION:EN_CUSTODIA', 'LOTE:REASIGNADO', 'ASIGNACION:REASIGNADA']),
+    );
+  });
+
+  it('C6: avisa al estudiante original, al nuevo y al DONADOR; no alerta de un lote sin destino', async () => {
+    const { s, notificaciones } = escenarioReasignacion();
+    await s.reasignarDesdeCustodia(40, 5, 'El estudiante no recogio', 1);
+    const llamadas = notificaciones.aUsuarios.mock.calls;
+    expect(llamadas.map((c: any) => c[0][0])).toEqual(expect.arrayContaining([9, 8, 7]));
+    const alDonador = llamadas.find((c: any) => c[0][0] === 7)[1];
+    expect(alDonador.tipo).toBe('DONACION_REASIGNADA');
+    // Sin identidades: el donador no ve la descripcion de ninguna peticion.
+    expect(JSON.stringify(alDonador)).not.toContain('Necesito una chaqueta');
+    expect(notificaciones.aPersonalLis).not.toHaveBeenCalled();
+  });
+
+  it('C6: solo aplica a productos EN_CUSTODIA (un ASIGNADO aun no esta en el LIS)', async () => {
+    const { s, repoOxp } = servicio({
+      asignacion: { ...enCustodia(), estado: EstadoAsignacion.ASIGNADO, loteId: null },
+      oferta,
+      peticion,
+    });
+    await expect(s.reasignarDesdeCustodia(40, 5, 'motivo de prueba', 1)).rejects.toThrow('EN_CUSTODIA');
+    expect(repoOxp.save).not.toHaveBeenCalled();
+  });
+
+  it('C6: si la peticion destino no sirve, falla DENTRO de la misma transaccion (se revierte la cancelacion)', async () => {
+    const { s, dataSource } = escenarioReasignacion({ ...destinoAprobado(), estado: EstadoPeticion.RECHAZADA });
+    await expect(s.reasignarDesdeCustodia(40, 5, 'motivo de prueba', 1)).rejects.toThrow('peticion aprobada');
+    // Cancelar y reasignar van en la misma transaccion: el error la revierte entera.
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
   });
 
   it('prorroga: aplazar el plazo del donador suma dias y respeta el maximo', async () => {

@@ -2,13 +2,13 @@
  * Pruebas de LOCAL (D-43), notificaciones en dos canales (D-42) y tareas
  * DEFINIR_ESTADO con reloj controlado. Dobles de repositorio; sin BD ni red.
  */
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { createTransport } from 'nodemailer';
 import { RolesGuard } from './auth/roles.guard';
 import { EstadoAsignacion, EstadoPeticion, Perfil, Rol } from './common/enums';
 import { EmparejamientoService, FILA_LOCAL } from './emparejamiento/emparejamiento.service';
-import { LocalController } from './local/local.controller';
+import { LocalController, LocalDonadorController } from './local/local.controller';
 import { LocalService } from './local/local.service';
 import { CorreoService } from './notificaciones/correo.service';
 import { NotificacionesService } from './notificaciones/notificaciones.service';
@@ -29,7 +29,7 @@ function gestor(resultados: Record<string, any>, repos: Record<string, any>) {
 
 describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
   function servicio(destino: any, extras: { titular?: any } = {}) {
-    const repoDestino = { save: jest.fn(async (x) => ({ ...x, id: x.id ?? 33 })), create: jest.fn((x) => x) };
+    const repoDestino = { save: jest.fn(async (x) => ({ ...x, id: x.id ?? 33 })), create: jest.fn((x) => x), findOne: jest.fn(async () => null) };
     const repoLote = { update: jest.fn(), create: jest.fn((x) => x), save: jest.fn(async (x) => ({ ...x, id: 70 })) };
     const repoOxp = { findOne: jest.fn(async () => extras.titular ?? null) };
     const repoPeticion = { save: jest.fn(), create: jest.fn() };
@@ -61,7 +61,8 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
       notificaciones,
       asignaciones,
       { prioridadDe: jest.fn(async () => ({ prioridad: { total: 0.5 }, coeficientes: 'x' })) } as any,
-      { recepcionSuspendida: jest.fn(async () => null) } as any,
+      { recepcionSuspendida: jest.fn(async () => null), cierres: jest.fn(async () => []) } as any,
+      { plazoRespuestaDonadorLocal: jest.fn(async () => 5) } as any,
     );
     return { s, repoDestino, repoLote, repoPeticion, notificaciones, asignaciones };
   }
@@ -89,24 +90,79 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
     await expect(s.custodiaDesdeLote(70, 'Esperando respuesta del donador', 2)).rejects.toThrow('asignacion 40');
   });
 
-  it('SOLO el administrador acepta como donativo institucional (servicio)', async () => {
-    const { s } = servicio({ id: 33, estado: 'CUSTODIA_TEMPORAL', loteId: 70, ofertaId: 1, cantidad: 2 });
-    await expect(s.aceptar(33, 'Uso del laboratorio', auxiliar)).rejects.toBeInstanceOf(ForbiddenException);
+  // --- D-50 / correcciones 7 y 8: aceptacion con consentimiento del donador ---
+  const enCustodia = () => ({ id: 33, estado: 'CUSTODIA_TEMPORAL', loteId: 70, ofertaId: 1, cantidad: 2 });
+  const propuesto = () => ({
+    ...enCustodia(), estado: 'PROPUESTO_DONADOR', aceptacionSolicitadaPor: 1,
+    aceptacionSolicitadaEn: new Date(), propuestaMotivo: 'Uso del laboratorio', propuestaLimite: '2026-12-01',
+  });
+  const donador7: any = { sub: 7, perfil: Perfil.DONADOR, esAdministrador: false, esPersonalLis: false };
+
+  it('D-50: SOLO el administrador propone que quede para el LIS (servicio)', async () => {
+    const { s, repoDestino } = servicio(enCustodia());
+    await expect(s.proponer(33, 'Uso del laboratorio', auxiliar)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repoDestino.save).not.toHaveBeenCalled();
   });
 
-  it('el administrador acepta: lote pasa a PATRIMONIO_LIS y queda registrado quien autorizo', async () => {
-    const { s, repoDestino, repoLote } = servicio({ id: 33, estado: 'CUSTODIA_TEMPORAL', loteId: 70, ofertaId: 1, cantidad: 2 });
-    await s.aceptar(33, 'Uso del laboratorio', admin);
-    expect(repoDestino.save).toHaveBeenCalledWith(expect.objectContaining({ estado: 'ACEPTADO', aceptadoPor: 1 }));
+  it('D-50: proponer NO acepta; deja PROPUESTO_DONADOR con plazo y avisa al donador CON EL MOTIVO (correccion 7)', async () => {
+    const { s, repoDestino, repoLote, notificaciones } = servicio(enCustodia());
+    await s.proponer(33, 'Uso del laboratorio de redes', admin);
+    expect(repoDestino.save).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 'PROPUESTO_DONADOR', aceptacionSolicitadaPor: 1, propuestaMotivo: 'Uso del laboratorio de redes', propuestaLimite: expect.any(String) }),
+    );
+    expect(repoLote.update).not.toHaveBeenCalled(); // aun NO es patrimonio del LIS
+    const [destinatarios, aviso] = notificaciones.aUsuarios.mock.calls[0];
+    expect(destinatarios).toEqual([7]);
+    expect(aviso.mensaje).toContain('Uso del laboratorio de redes');
+    expect(aviso.mensaje).toContain('ACEPTAR o RECHAZAR');
+  });
+
+  it('D-50: el donador ACEPTA -> ACEPTADO, lote PATRIMONIO_LIS, autorizo el admin que propuso', async () => {
+    const { s, repoDestino, repoLote } = servicio(propuesto());
+    await s.responder(33, true, undefined, donador7);
+    expect(repoDestino.save).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 'ACEPTADO', aceptadoPor: 1, respuestaDonador: 'ACEPTA' }),
+    );
     expect(repoLote.update).toHaveBeenCalledWith({ id: 70 }, expect.objectContaining({ ubicacion: 'PATRIMONIO_LIS' }));
   });
 
-  it('SOLO el administrador acepta (guard real sobre los metadatos del controlador)', () => {
+  it('D-50: el donador RECHAZA -> POR_DEVOLVER (correccion 8); el lote sigue en el LIS', async () => {
+    const { s, repoDestino, repoLote, notificaciones } = servicio(propuesto());
+    await s.responder(33, false, 'Prefiero que me la devuelvan', donador7);
+    expect(repoDestino.save).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 'POR_DEVOLVER', respuestaDonador: 'RECHAZA', respuestaMotivo: 'Prefiero que me la devuelvan' }),
+    );
+    expect(repoLote.update).not.toHaveBeenCalled();
+    expect(notificaciones.aPersonalLis).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'LOCAL_POR_DEVOLVER' }));
+  });
+
+  it('D-50: otro usuario no puede responder la propuesta (404, sin revelar que existe)', async () => {
+    const { s, repoDestino } = servicio(propuesto());
+    await expect(s.responder(33, true, undefined, { ...donador7, sub: 99 })).rejects.toBeInstanceOf(NotFoundException);
+    expect(repoDestino.save).not.toHaveBeenCalled();
+  });
+
+  it('D-50: no se responde si no hay propuesta abierta', async () => {
+    const { s } = servicio(enCustodia());
+    await expect(s.responder(33, true, undefined, donador7)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('D-50: el administrador puede retirar la propuesta: vuelve a CUSTODIA_TEMPORAL', async () => {
+    const { s, repoDestino } = servicio(propuesto());
+    await s.retirarPropuesta(33, 'Ya no lo necesitamos', admin);
+    expect(repoDestino.save).toHaveBeenCalledWith(expect.objectContaining({ estado: 'CUSTODIA_TEMPORAL' }));
+  });
+
+  it('D-50: guard real: proponer/retirar SOLO admin; responder SOLO perfil DONADOR', () => {
     const guard = new RolesGuard(new Reflector());
-    const ctx = (usuario: any) =>
-      ({ getHandler: () => LocalController.prototype.aceptar, getClass: () => LocalController, switchToHttp: () => ({ getRequest: () => ({ usuario }) }) }) as any;
-    expect(() => guard.canActivate(ctx({ perfil: Perfil.DONADOR, roles: [Rol.AUXILIAR_LIS], esAdministrador: false }))).toThrow(ForbiddenException);
-    expect(guard.canActivate(ctx({ perfil: Perfil.DONADOR, roles: [Rol.ADMINISTRADOR], esAdministrador: true }))).toBe(true);
+    const ctx = (clase: any, metodo: string, usuario: any) =>
+      ({ getHandler: () => clase.prototype[metodo], getClass: () => clase, switchToHttp: () => ({ getRequest: () => ({ usuario }) }) }) as any;
+    for (const metodo of ['proponer', 'retirarPropuesta']) {
+      expect(() => guard.canActivate(ctx(LocalController, metodo, { perfil: Perfil.DONADOR, roles: [Rol.AUXILIAR_LIS], esAdministrador: false }))).toThrow(ForbiddenException);
+      expect(guard.canActivate(ctx(LocalController, metodo, { perfil: Perfil.DONADOR, roles: [Rol.ADMINISTRADOR], esAdministrador: true }))).toBe(true);
+    }
+    expect(guard.canActivate(ctx(LocalDonadorController, 'responder', { perfil: Perfil.DONADOR, roles: [] }))).toBe(true);
+    expect(() => guard.canActivate(ctx(LocalDonadorController, 'responder', { perfil: Perfil.ESTUDIANTE, roles: [] }))).toThrow(ForbiddenException);
   });
 
   it('reasignar desde custodia LOCAL cierra el destino y crea el intento con el mismo lote', async () => {
@@ -329,5 +385,57 @@ describe('TareasService.revisar con fecha simulada (sin esperar dias reales)', (
     await s.revisar(new Date('2026-12-07T15:00:00Z'));
     const alDonador = notificaciones.aUsuarios.mock.calls.find((c: any) => c[0][0] === 7)[1];
     expect(JSON.stringify(alDonador)).not.toMatch(/estudiante 8|Est /);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D-50: propuesta LOCAL sin respuesta del donador (reloj controlado)
+// ---------------------------------------------------------------------------
+describe('D-50 TareasService: propuesta LOCAL sin respuesta', () => {
+  function servicio() {
+    const tareas: any[] = [];
+    const repoTareas: any = {
+      findOne: jest.fn(async ({ where }: any) => tareas.find((t) => t.clave === where.clave) ?? null),
+      create: (x: any) => x,
+      save: jest.fn(async (x: any) => tareas.push({ ...x, id: tareas.length + 1 })),
+      find: jest.fn(async () => []),
+      update: jest.fn(),
+    };
+    const propuesta = {
+      id: 33, estado: 'PROPUESTO_DONADOR', loteId: 70, propuestaLimite: '2026-12-04',
+      oferta: { donadorId: 7, nombreProducto: 'Silla' },
+    };
+    const destinos: any = {
+      find: jest.fn(async ({ where }: any) => (where?.estado === 'PROPUESTO_DONADOR' ? [propuesta] : [])),
+      findOne: jest.fn(async () => propuesta),
+    };
+    const vacio: any = { find: jest.fn(async () => []) };
+    const notificaciones: any = { aUsuarios: jest.fn(async () => 1), aPersonalLis: jest.fn(async () => 2) };
+    const s = new TareasService(
+      repoTareas, vacio, destinos, vacio, {} as any, {} as any, notificaciones,
+      { cierres: async () => [] } as any,
+      { plazos: async () => ({ donador: 10, estudiante: 3, avisoPrevio: 1 }), numero: async (_: string, d: number) => d } as any,
+      { get: () => undefined } as any,
+    );
+    return { s, tareas, notificaciones };
+  }
+
+  it('dia anterior al limite: recordatorio al donador, sin tarea', async () => {
+    const { s, tareas, notificaciones } = servicio();
+    await s.revisar(new Date('2026-12-03T15:00:00Z'));
+    expect(tareas).toHaveLength(0);
+    expect(notificaciones.aUsuarios).toHaveBeenCalledWith([7], expect.objectContaining({ tipo: 'PLAZO_PROXIMO', entidad: 'LOCAL' }));
+  });
+
+  it('vencida: UNA tarea DEFINIR_ESTADO (idempotente), aviso bilateral y nunca se acepta sola', async () => {
+    const { s, tareas, notificaciones } = servicio();
+    const ahora = new Date('2026-12-07T15:00:00Z');
+    await s.revisar(ahora);
+    await s.revisar(ahora);
+    expect(tareas).toHaveLength(1);
+    expect(tareas[0]).toMatchObject({ destinoLocalId: 33, responsable: 'DONADOR', clave: 'PROPUESTA:LOCAL:33:2026-12-04' });
+    const alDonador = notificaciones.aUsuarios.mock.calls.find((c: any) => c[1].tipo === 'PLAZO_VENCIDO')[1];
+    expect(alDonador.mensaje).toContain('NO queda para el LIS sin tu consentimiento');
+    expect(notificaciones.aPersonalLis).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'TAREA_DEFINIR_ESTADO' }));
   });
 });

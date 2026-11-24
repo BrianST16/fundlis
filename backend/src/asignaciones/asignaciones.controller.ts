@@ -67,6 +67,11 @@ class DesdeLoteDto {
   peticionId: number;
 }
 
+class ReasignarDto extends MotivoDto {
+  @IsInt() @IsPositive()
+  peticionId: number;
+}
+
 class ProrrogaDto extends MotivoDto {
   @IsIn(['APLAZAR', 'EXTENDER'])
   tipo: 'APLAZAR' | 'EXTENDER';
@@ -113,6 +118,14 @@ export class AsignacionesController {
   @Post('desde-lote')
   desdeLote(@Body() dto: DesdeLoteDto, @Actual() actual: UsuarioActual) {
     return this.servicio.reasignarLote(dto.loteId, dto.peticionId, actual.sub);
+  }
+
+  /** Correccion 6: un producto EN_CUSTODIA pasa a otra peticion directamente
+   *  EN_CUSTODIA, sin repetir la recepcion, en una sola transaccion. */
+  @Roles(Rol.AUXILIAR_LIS)
+  @Post(':id/reasignar')
+  reasignar(@Param('id', ParseIntPipe) id: number, @Body() dto: ReasignarDto, @Actual() actual: UsuarioActual) {
+    return this.servicio.reasignarDesdeCustodia(id, dto.peticionId, dto.motivo, actual.sub);
   }
 
   /** Aplazamiento del donador o extension de recogida del estudiante. */

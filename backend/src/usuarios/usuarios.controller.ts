@@ -1,12 +1,15 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
-import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
 import { Actual, Roles } from '../auth/decoradores';
 import { UsuarioActual } from '../auth/auth.types';
 import { Rol } from '../common/enums';
 import { UsuariosService } from './usuarios.service';
 
+/** SUPERUSUARIO queda fuera a proposito: solo se asigna por script de BD. */
 class RolDto {
-  @IsEnum(Rol, { message: 'El rol debe ser AUXILIAR_LIS o ADMINISTRADOR.' })
+  @IsIn([Rol.AUXILIAR_LIS, Rol.ADMINISTRADOR], {
+    message: 'Solo se pueden gestionar los roles AUXILIAR_LIS y ADMINISTRADOR.',
+  })
   rol: Rol;
 }
 
@@ -17,7 +20,8 @@ class BloqueoDto {
   motivo: string;
 }
 
-/** Gestion de usuarios y roles: solo ADMINISTRADOR. */
+/** Gestion de usuarios y roles: ADMINISTRADOR (y SUPERUSUARIO, que lo
+ *  hereda). Las reglas finas por rol estan en UsuariosService. */
 @Controller('usuarios')
 @Roles(Rol.ADMINISTRADOR)
 export class UsuariosController {
@@ -39,7 +43,7 @@ export class UsuariosController {
     @Body() dto: RolDto,
     @Actual() actual: UsuarioActual,
   ) {
-    return this.servicio.otorgarRol(id, dto.rol, actual.sub);
+    return this.servicio.otorgarRol(id, dto.rol, actual.sub, actual.esSuperusuario);
   }
 
   @Post(':id/roles/revocar')
@@ -48,7 +52,7 @@ export class UsuariosController {
     @Body() dto: RolDto,
     @Actual() actual: UsuarioActual,
   ) {
-    return this.servicio.revocarRol(id, dto.rol, actual.sub);
+    return this.servicio.revocarRol(id, dto.rol, actual.sub, actual.esSuperusuario);
   }
 
   @Patch(':id/bloquear')
@@ -57,11 +61,11 @@ export class UsuariosController {
     @Body() dto: BloqueoDto,
     @Actual() actual: UsuarioActual,
   ) {
-    return this.servicio.bloquear(id, dto.motivo, actual.sub);
+    return this.servicio.bloquear(id, dto.motivo, actual.sub, actual.esSuperusuario);
   }
 
   @Patch(':id/desbloquear')
   desbloquear(@Param('id', ParseIntPipe) id: number, @Actual() actual: UsuarioActual) {
-    return this.servicio.desbloquear(id, actual.sub);
+    return this.servicio.desbloquear(id, actual.sub, actual.esSuperusuario);
   }
 }

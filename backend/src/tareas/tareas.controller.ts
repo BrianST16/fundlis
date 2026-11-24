@@ -6,7 +6,7 @@ import { Rol } from '../common/enums';
 import { DecisionTarea } from '../entities';
 import { TareasService } from './tareas.service';
 
-const DECISIONES: DecisionTarea[] = ['APLAZAR', 'CANCELAR_INTENTO', 'EXTENDER', 'REASIGNAR', 'DEVOLUCION', 'CUSTODIA_LOCAL', 'SIN_ACCION'];
+const DECISIONES: DecisionTarea[] = ['APLAZAR', 'CANCELAR_INTENTO', 'EXTENDER', 'REASIGNAR', 'DEVOLUCION', 'CUSTODIA_LOCAL', 'RETIRAR_PROPUESTA', 'SIN_ACCION'];
 
 class ResolverDto {
   @IsIn(DECISIONES)

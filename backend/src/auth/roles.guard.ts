@@ -6,7 +6,8 @@ import { CLAVE_PERFILES, CLAVE_ROLES } from './decoradores';
 
 /**
  * Autorizacion por rol administrativo y por perfil.
- * Un ADMINISTRADOR hereda todo lo que puede hacer un AUXILIAR_LIS.
+ * Un ADMINISTRADOR hereda todo lo que puede hacer un AUXILIAR_LIS, y un
+ * SUPERUSUARIO hereda todo lo del ADMINISTRADOR.
  */
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -28,8 +29,12 @@ export class RolesGuard implements CanActivate {
     if (!usuario) throw new ForbiddenException('Se requiere iniciar sesion.');
 
     if (rolesRequeridos?.length) {
+      // esAdministrador ya incluye al SUPERUSUARIO (ver JwtGuard).
       const tiene = rolesRequeridos.some(
-        (r) => usuario.roles.includes(r) || (r === Rol.AUXILIAR_LIS && usuario.esAdministrador),
+        (r) =>
+          usuario.roles.includes(r) ||
+          (r === Rol.AUXILIAR_LIS && usuario.esAdministrador) ||
+          (r === Rol.ADMINISTRADOR && usuario.esAdministrador),
       );
       if (!tiene) {
         throw new ForbiddenException('Tu rol no permite esta operacion.');

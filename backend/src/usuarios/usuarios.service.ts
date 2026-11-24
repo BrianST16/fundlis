@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import { EntidadHistorial, Perfil, Rol } from '../common/enums';
@@ -43,8 +48,34 @@ export class UsuariosService {
     return { ...u, roles: roles.map((r) => r.rol) };
   }
 
-  /** Otorga un rol administrativo. Solo lo invoca un administrador. */
-  async otorgarRol(usuarioId: number, rol: Rol, actorId: number) {
+  /**
+   * D-45: quien puede gestionar cada rol.
+   *  - SUPERUSUARIO: nadie desde la API (solo script de BD).
+   *  - ADMINISTRADOR: solo un SUPERUSUARIO.
+   *  - AUXILIAR_LIS: cualquier administrador (o superusuario).
+   * Se valida aqui, en el backend; ocultar botones en Angular no basta.
+   */
+  private validarGestionRol(rol: Rol, actorEsSuperusuario: boolean): void {
+    if (rol === Rol.SUPERUSUARIO) {
+      throw new ForbiddenException(
+        'El rol SUPERUSUARIO solo se asigna o retira por script de mantenimiento.',
+      );
+    }
+    if (rol === Rol.ADMINISTRADOR && !actorEsSuperusuario) {
+      throw new ForbiddenException(
+        'Solo un superusuario puede otorgar o quitar el rol ADMINISTRADOR.',
+      );
+    }
+  }
+
+  private quienActua(actorEsSuperusuario: boolean): string {
+    return actorEsSuperusuario ? 'un superusuario' : 'un administrador';
+  }
+
+  /** Otorga un rol administrativo. Lo invoca un administrador o superusuario. */
+  async otorgarRol(usuarioId: number, rol: Rol, actorId: number, actorEsSuperusuario = false) {
+    this.validarGestionRol(rol, actorEsSuperusuario);
+
     const u = await this.usuarios.findOne({ where: { id: usuarioId } });
     if (!u) throw new NotFoundException('El usuario no existe.');
 
@@ -70,7 +101,7 @@ export class UsuariosService {
           estadoAnterior: null,
           estadoNuevo: `ROL_${rol}`,
           actorId,
-          motivo: 'Rol otorgado por un administrador',
+          motivo: `Rol otorgado por ${this.quienActua(actorEsSuperusuario)}`,
         },
         mgr,
       );
@@ -80,7 +111,9 @@ export class UsuariosService {
   }
 
   /** Revoca un rol. Nunca deja la plataforma sin administradores. */
-  async revocarRol(usuarioId: number, rol: Rol, actorId: number) {
+  async revocarRol(usuarioId: number, rol: Rol, actorId: number, actorEsSuperusuario = false) {
+    this.validarGestionRol(rol, actorEsSuperusuario);
+
     const fila = await this.roles.findOne({ where: { usuarioId, rol } });
     if (!fila) throw new NotFoundException('El usuario no tiene ese rol.');
 
@@ -102,7 +135,7 @@ export class UsuariosService {
           estadoAnterior: `ROL_${rol}`,
           estadoNuevo: `SIN_ROL_${rol}`,
           actorId,
-          motivo: 'Rol revocado por un administrador',
+          motivo: `Rol revocado por ${this.quienActua(actorEsSuperusuario)}`,
         },
         mgr,
       );
@@ -112,7 +145,7 @@ export class UsuariosService {
   }
 
   /** Baja logica: se bloquea el acceso, no se borra el historial. */
-  async bloquear(usuarioId: number, motivo: string, actorId: number) {
+  async bloquear(usuarioId: number, motivo: string, actorId: number, actorEsSuperusuario = false) {
     const u = await this.usuarios.findOne({ where: { id: usuarioId } });
     if (!u) throw new NotFoundException('El usuario no existe.');
     if (usuarioId === actorId) {
@@ -120,9 +153,18 @@ export class UsuariosService {
     }
     if (!u.activo) throw new BadRequestException('La cuenta ya esta bloqueada.');
 
-    const esAdmin = await this.roles.findOne({
-      where: { usuarioId, rol: Rol.ADMINISTRADOR },
-    });
+    // D-45: bloquear equivale a quitar todos los permisos, asi que sigue
+    // las mismas reglas que la gestion de roles.
+    const rolesObjetivo = (await this.roles.find({ where: { usuarioId } })).map((r) => r.rol);
+    if (rolesObjetivo.includes(Rol.SUPERUSUARIO)) {
+      throw new ForbiddenException(
+        'Un superusuario no se bloquea desde la interfaz; usa el script de mantenimiento.',
+      );
+    }
+    const esAdmin = rolesObjetivo.includes(Rol.ADMINISTRADOR);
+    if (esAdmin && !actorEsSuperusuario) {
+      throw new ForbiddenException('Solo un superusuario puede bloquear a un administrador.');
+    }
     if (esAdmin) {
       const total = await this.roles.count({ where: { rol: Rol.ADMINISTRADOR } });
       if (total <= 1) {
@@ -144,10 +186,20 @@ export class UsuariosService {
     return this.detalle(usuarioId);
   }
 
-  async desbloquear(usuarioId: number, actorId: number) {
+  async desbloquear(usuarioId: number, actorId: number, actorEsSuperusuario = false) {
     const u = await this.usuarios.findOne({ where: { id: usuarioId } });
     if (!u) throw new NotFoundException('El usuario no existe.');
     if (u.activo) throw new BadRequestException('La cuenta ya esta activa.');
+
+    // Simetrico con bloquear: un administrador no deshace el bloqueo que un
+    // superusuario aplico a otro administrador.
+    const rolesObjetivo = (await this.roles.find({ where: { usuarioId } })).map((r) => r.rol);
+    if (
+      (rolesObjetivo.includes(Rol.SUPERUSUARIO) || rolesObjetivo.includes(Rol.ADMINISTRADOR)) &&
+      !actorEsSuperusuario
+    ) {
+      throw new ForbiddenException('Solo un superusuario puede desbloquear a un administrador.');
+    }
 
     u.activo = true;
     u.motivoBloqueo = null;
@@ -158,7 +210,7 @@ export class UsuariosService {
       estadoAnterior: 'BLOQUEADO',
       estadoNuevo: 'ACTIVO',
       actorId,
-      motivo: 'Desbloqueo por un administrador',
+      motivo: `Desbloqueo por ${this.quienActua(actorEsSuperusuario)}`,
     });
     return this.detalle(usuarioId);
   }

@@ -7,6 +7,7 @@ export * from './pregunta-caracterizacion.entity';
 export * from './opcion-caracterizacion.entity';
 export * from './caracterizacion.entity';
 export * from './respuesta-caracterizacion.entity';
+export * from './certificado-estudio.entity';
 export * from './evidencia.entity';
 export * from './oferta.entity';
 export * from './peticion.entity';
