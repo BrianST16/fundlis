@@ -11,13 +11,12 @@ Tres componentes independientes:
 | Backend | NestJS + TypeScript + TypeORM | 3000 |
 | Base de datos | SQL Server Express | 1433 |
 
-> **Estado verificado (2026-11-20):** el backend y el frontend **compilan**
-> (`npm run build`, exit 0) y el backend pasa **89/89 pruebas unitarias**
-> (`npm test`, 8 suites, datos ficticios, sin BD). **Todavía no se ha
-> ejecutado contra SQL Server ni en un navegador**: eso requiere confirmar una
-> BD de desarrollo sin datos reales (decisión H-9). Los supuestos marcados como
-> PROPUESTA no están aprobados por el equipo ni por el profesor. El estado por
-> criterio está en `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md`.
+> **Estado verificado (2026-11-24):** el backend y el frontend **compilan** y el
+> backend pasa **171/171 pruebas unitarias** (`npm test`, 12 suites, datos
+> ficticios, sin BD). Las correcciones 1 a 11 se probaron manualmente contra la BD
+> de desarrollo `LisDona` (SQL Server Express) y en el navegador. Pendientes:
+> corrección 12 (correo, D-53) y despliegue. Las decisiones vigentes están en
+> `docs/01_decisiones_y_pendientes.md` (D-45 a D-53 son las de este ciclo).
 
 ---
 
@@ -39,6 +38,27 @@ segundo carga los 51 grupos Sisbén, 7 categorías, 5 preguntas de caracterizaci
 con sus opciones y los parámetros de configuración.
 
 El seed termina imprimiendo un conteo: si ves `grupos_sisben = 51`, quedó bien.
+
+Después aplica las **migraciones versionadas** (`db/migraciones/003` a `011`).
+El ejecutor las registra en `ESQUEMA_VERSION`, aplica cada una en una
+transacción y solo opera sobre la base `LisDona`:
+
+```bash
+cd backend
+node scripts/db/migrar.js --estado   # ver aplicadas / pendientes
+node scripts/db/migrar.js            # aplicar las pendientes
+```
+
+**Superusuario (D-45).** Es el único rol que gestiona administradores y nunca se
+otorga desde la interfaz. Para asignarlo, la persona inicia sesión una vez y luego
+se ejecuta `db/scripts/asignar_superusuario.sql` con su correo
+(`@accion = 'ASIGNAR'` o `'QUITAR'`).
+
+**Datos de demostración.** `db/03_demo_presentacion.sql` carga un escenario
+**ficticio** con todos los casos de la presentación (ver §2.1). Es repetible:
+primero borra solo lo demo y luego lo vuelve a sembrar, en una sola transacción.
+Ejecútalo en SSMS / Azure Data Studio sobre `LisDona` **después** de las
+migraciones. Reemplaza al escenario reducido de `backend/scripts/db/demo.js`.
 
 ### 1.2 Credenciales de Google
 
@@ -90,6 +110,45 @@ Abre `http://localhost:4200`.
 > `npm install <paquete>@latest`; el código no depende de nada específico de esas
 > versiones.
 
+### 1.5 Despliegue (tres componentes por separado)
+
+Lista de verificación. Nada de esto está automatizado todavía.
+
+**Base de datos (SQL Server)**
+1. Crear la base y ejecutar `db/01_schema.sql` y `db/02_seed.sql`.
+2. Desde una máquina con acceso a esa BD: `node scripts/db/migrar.js` con el
+   `.env` apuntando a ella. Si el nombre no es `LisDona`, define
+   `BD_EXPERIMENTAL_PERMITIDA` con ese nombre.
+3. Opcional, solo para la presentación: `db/03_demo_presentacion.sql`.
+4. Hacer un respaldo (`node scripts/db/respaldar-bd.js`) antes de cada cambio.
+
+**Backend (NestJS)**
+1. Variables de entorno, **no** un `.env` subido al repositorio. Ver
+   `backend/.env.example`. En producción: `NODE_ENV=production`, `JWT_SECRET`
+   nuevo y largo, `CORS_ORIGINS` = URL pública del frontend, `ADMIN_EMAILS`,
+   credenciales de la BD (`DB_ENCRYPT=true` si el servidor lo exige).
+2. `npm ci && npm run build && npm run start:prod`, que sirve en `PORT` con el
+   prefijo `/api`.
+3. Comprobar `GET https://TU-BACKEND/api/salud` → `"baseDatos":"conectada"`.
+
+**Frontend (Angular)**
+1. En `frontend/src/environments/environment.prod.ts`, poner `apiUrl` con la URL
+   pública del backend terminada en `/api`. `googleClientId` debe ser el mismo
+   del backend.
+2. `npm ci && npx ng build` → publicar `frontend/dist/lis-dona/browser/`.
+3. **Reescritura SPA (corrección 1):** el servidor estático debe responder
+   `index.html` en cualquier ruta que no sea un archivo. Por ejemplo, Netlify:
+   `/* /index.html 200`; Vercel: `rewrites` a `/index.html`; Nginx:
+   `try_files $uri $uri/ /index.html;`; Firebase: `"rewrites": [{"source": "**", "destination": "/index.html"}]`.
+   Sin esto, recargar `/lis/...` devuelve 404.
+
+**Google OAuth**
+- En Google Cloud Console, agregar la URL pública del frontend en *Orígenes
+  autorizados de JavaScript*. Sin eso, el botón de Google falla en producción.
+
+**Prueba final:** iniciar sesión con Google, recargar (F5) una ruta anidada como
+`/lis/plazos` y comprobar que no queda en blanco.
+
 ---
 
 ## 2. Recorrido de la demostración
@@ -117,6 +176,28 @@ El flujo completo, en el orden en que conviene mostrarlo:
 
 Para repartir una donación entre varios estudiantes, asigna cantidades parciales
 de la misma oferta a peticiones distintas: el saldo se recalcula solo.
+
+### 2.1 Escenario de demostración (`db/03_demo_presentacion.sql`)
+
+Todo es ficticio y está marcado con `[DEMO]`. Las cuentas demo no pueden iniciar
+sesión: entra con tu cuenta de administrador para ver el LIS. Después de cargarlo,
+en *Plazos y tareas* pulsa **Revisar ahora** para generar las tareas vencidas.
+
+| Pantalla | Qué se puede mostrar |
+|---|---|
+| Aprobaciones | Oferta de donador **★ recurrente** (D-49), de uno nuevo, de uno con fallas y una **propia del auxiliar** (D-47) |
+| Emparejamiento | Chaqueta (KD-tree: 2 peticiones compatibles y 2 excluidas por estado o talla); lotes disponibles: tablet sin destino, resmas recibidas incompletas y videoproyector en custodia LOCAL |
+| Custodia | Asignación vencida del donador; asignación en plazo (registrar recepción); en custodia vencida (**reasignar**, corrección 6); en custodia reciente (registrar **entrega con foto**, corrección 9); devolución pendiente; **Trazabilidad** |
+| LOCAL | Espera de recepción, custodia temporal, **propuesta al donador** en plazo y vencida, **por devolver** (rechazó) y **aceptado** (D-50) |
+| Plazos y tareas | DEFINIR_ESTADO: donador que no entregó, estudiante que no recogió, lote sin destino y propuesta LOCAL sin respuesta |
+| Analítica | Ranking de donadores con ★ recurrente, cumplimiento y alertas por fallas |
+| Usuarios | Superusuario, administrador, auxiliares, cuenta bloqueada, y certificados validado, pendiente y **rechazado (docente)** (D-46); estudiante con 5 peticiones abiertas (límite) |
+
+Para mostrar también las pantallas del **donador** (propuesta LOCAL para
+aceptar o rechazar, foto de la entrega en la bandeja) y del **estudiante**
+(producto listo para recoger), escribe tus correos reales en
+`@email_donador_real` y `@email_estudiante_real` al inicio del script. Esas
+cuentas deben haber iniciado sesión al menos una vez.
 
 ---
 
