@@ -23,9 +23,13 @@ export class AuthService {
   readonly autenticado = computed(() => this.sesion() !== null);
   readonly esEstudiante = computed(() => this.sesion()?.perfil === 'ESTUDIANTE');
   readonly esDonador = computed(() => this.sesion()?.perfil === 'DONADOR');
-  readonly esAdministrador = computed(() => this.tieneRol('ADMINISTRADOR'));
+  /** Rol de mantenimiento (solo se asigna por script de BD). Implica administrador. */
+  readonly esSuperusuario = computed(() => this.tieneRol('SUPERUSUARIO'));
+  readonly esAdministrador = computed(
+    () => this.tieneRol('ADMINISTRADOR') || this.esSuperusuario(),
+  );
   readonly esPersonalLis = computed(
-    () => this.tieneRol('AUXILIAR_LIS') || this.tieneRol('ADMINISTRADOR'),
+    () => this.tieneRol('AUXILIAR_LIS') || this.esAdministrador(),
   );
 
   get token(): string | null {
@@ -46,6 +50,33 @@ export class AuthService {
       this.sesion.set(sesion);
     } catch {
       this.limpiar();
+    }
+  }
+
+  private refrescando = false;
+
+  /**
+   * Relee perfil y roles vigentes sin recargar la pagina (los roles los
+   * puede cambiar un administrador en cualquier momento). Si cambiaron, la
+   * pantalla actual puede ya no corresponder: se lleva al usuario a su
+   * ruta inicial y el menu se actualiza solo (es una signal).
+   */
+  async refrescarSesion(): Promise<void> {
+    if (!this.token || this.refrescando) return;
+    this.refrescando = true;
+    try {
+      const nueva = await firstValueFrom(
+        this.http.get<Sesion>(`${environment.apiUrl}/auth/yo`),
+      );
+      const firma = (s: Sesion | null) => `${s?.perfil}|${[...(s?.roles ?? [])].sort().join(',')}`;
+      const cambio = firma(this.sesion()) !== firma(nueva);
+      this.sesion.set(nueva);
+      if (cambio) this.router.navigateByUrl(this.rutaInicial());
+    } catch {
+      // Un 401 lo gestiona el interceptor (cierra la sesion). Otros errores
+      // (red caida) no deben tumbar la sesion actual.
+    } finally {
+      this.refrescando = false;
     }
   }
 

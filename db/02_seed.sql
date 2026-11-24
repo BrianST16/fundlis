@@ -16,7 +16,8 @@ USING (VALUES
     ('PESO_SISBEN',          '0.30', 'Peso del grupo Sisben en la prioridad'),
     ('PESO_ANTIGUEDAD',      '0.20', 'Peso de la antiguedad de la peticion en la prioridad'),
     ('MAX_PETICIONES_ACTIVAS','5',   'Maximo de peticiones pendientes o aprobadas por estudiante'),
-    ('MAX_BYTES_EVIDENCIA',  '2097152', 'Tamano maximo por fotografia en bytes (2 MB)')
+    ('MAX_BYTES_EVIDENCIA',  '2097152', 'Tamano maximo por fotografia en bytes (2 MB)'),
+    ('MIN_DONACIONES_RECURRENTE', '3', 'Donaciones completadas para marcar a un donador como recurrente en Aprobaciones')
 ) AS s(clave, valor, descripcion)
 ON t.clave = s.clave
 WHEN NOT MATCHED THEN INSERT (clave, valor, descripcion) VALUES (s.clave, s.valor, s.descripcion);

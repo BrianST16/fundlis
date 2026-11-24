@@ -5,7 +5,7 @@ import { createHash } from 'crypto';
 import { UsuarioActual } from '../auth/auth.types';
 import { EstadoOferta, MIMES_EVIDENCIA } from '../common/enums';
 import { ParametrosService } from '../common/parametros.service';
-import { Evidencia, Movimiento, Oferta } from '../entities';
+import { Evidencia, Movimiento, Notificacion, Oferta } from '../entities';
 
 export interface EvidenciaDescargada {
   contenido: Buffer;
@@ -25,6 +25,7 @@ export class EvidenciasService {
     @InjectRepository(Oferta) private readonly ofertas: Repository<Oferta>,
     @InjectRepository(Movimiento) private readonly movimientos: Repository<Movimiento>,
     private readonly parametros: ParametrosService,
+    @InjectRepository(Notificacion) private readonly notificaciones?: Repository<Notificacion>,
   ) {}
 
   /** Guarda una imagen enviada en base64. Devuelve el id de la evidencia. */
@@ -128,6 +129,14 @@ export class EvidenciasService {
   /** Expuesto para pruebas: decide el acceso sin leer el binario. */
   async puedeVer(evidenciaId: number, actual: UsuarioActual | null): Promise<boolean> {
     if (actual?.esPersonalLis) return true;
+
+    // D-51: la foto adjunta a una notificacion la ve SOLO su destinatario
+    // (p. ej. el donador recibe la foto de la entrega final). Es una
+    // excepcion puntual y explicita a la regla de movimientos de abajo.
+    if (actual && this.notificaciones) {
+      const adjunta = await this.notificaciones.count({ where: { evidenciaId, usuarioId: actual.sub } });
+      if (adjunta > 0) return true;
+    }
 
     // Primero los movimientos: una evidencia fisica nunca se libera a las
     // partes, aunque por error estuviera ligada tambien a una oferta.

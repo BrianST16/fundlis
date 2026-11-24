@@ -2,12 +2,15 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <base href="/">
   <title>LIS Dona</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Google Identity Services: entrega el ID token que el backend verifica. -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <lis-raiz></lis-raiz>
+  <lis-raiz>
+    <p id="lis-cargando" style="padding:2rem;font-family:sans-serif">Cargando LIS Dona…</p>
+  </lis-raiz>
 </body>
 </html>

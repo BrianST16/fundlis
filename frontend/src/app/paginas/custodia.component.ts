@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { TrazabilidadComponent } from '../compartido/trazabilidad.component';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { AsignacionResumen, FotoEnviable } from '../core/modelos';
-import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
+import { fecha, leerComoFoto, mensajeError, puntaje } from '../core/utilidades';
 
 type Accion = 'recepcion' | 'entrega' | 'devolucion';
 
@@ -11,7 +14,7 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
 @Component({
   selector: 'lis-custodia',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, TrazabilidadComponent],
   template: `
     <h1>Custodia y entregas</h1>
     <p class="subtitulo">
@@ -21,6 +24,18 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
+
+    @if (auth.esAdministrador()) {
+      <div class="fila" style="margin-bottom:.75rem">
+        <span class="dato">Trazabilidad de la donacion #</span>
+        <input type="number" min="1" style="max-width:110px" [value]="buscarOferta()"
+               (input)="buscarOferta.set($any($event.target).value)" (keyup.enter)="verTraza(+buscarOferta())" />
+        <button class="secundario pequeno" [disabled]="!(+buscarOferta() > 0)" (click)="verTraza(+buscarOferta())">Ver</button>
+      </div>
+    }
+    @if (trazaOferta(); as id) {
+      <lis-trazabilidad [ofertaId]="id" (cerrar)="trazaOferta.set(null)" />
+    }
 
     <div class="fila" style="margin-bottom:1rem">
       @for (f of filtros; track f.valor) {
@@ -41,7 +56,11 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
         <div class="fila">
           <span class="etiqueta" [class.ambar]="a.estado === 'ASIGNADO'">{{ legible(a.estado) }}</span>
           <strong>{{ a.producto }}</strong>
-          <span class="dato">asignacion #{{ a.id }}</span>
+          <span class="dato">asignacion #{{ a.id }} &middot; donacion #{{ a.ofertaId }}</span>
+          @if (auth.esAdministrador()) {
+            <button class="secundario pequeno" style="margin-left:auto" (click)="verTraza(a.ofertaId)"
+                    title="Linea de tiempo completa: estados, movimientos, responsables y fotos">Trazabilidad</button>
+          }
         </div>
         <p class="dato">
           {{ a.cantidadAsignada }} unidades &middot; {{ a.categoria }} &middot;
@@ -52,7 +71,7 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
           Asignada el {{ fe(a.asignadaEn) }}
           @if (a.recibidaEn) { &middot; recibida el {{ fe(a.recibidaEn) }} }
           @if (a.puntajePrioridad !== null) {
-            &middot; prioridad al asignar {{ (a.puntajePrioridad * 100).toFixed(1) }}%
+            &middot; prioridad al asignar {{ pt(a.puntajePrioridad) }} <span class="dato">(0 a 1)</span>
           }
         </p>
 
@@ -65,6 +84,12 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
           }
           @if (a.estado === 'EN_CUSTODIA') {
             <button class="pequeno" (click)="abrir(a, 'entrega')">Registrar entrega</button>
+            @if (a.loteId) {
+              <button class="secundario pequeno" (click)="reasignar(a)"
+                      title="El producto ya esta en el LIS: pasa directo a custodia de la nueva peticion, sin repetir la recepcion">
+                Reasignar a otra peticion
+              </button>
+            }
             <button class="secundario pequeno" (click)="marcarDevolucion(a)">
               Pasar a devolucion
             </button>
@@ -100,6 +125,10 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
             @if (accion() === 'entrega') {
               <p class="dato">
                 La entrega debe ser por las {{ a.cantidadAsignada }} unidades completas.
+              </p>
+              <p class="aviso info" style="margin:.4rem 0">
+                Esta foto se enviara al donador por su bandeja. Fotografia el producto entregado y
+                evita que se vea el rostro o datos del estudiante.
               </p>
             }
 
@@ -138,6 +167,17 @@ type Accion = 'recepcion' | 'entrega' | 'devolucion';
 })
 export class CustodiaComponent implements OnInit {
   private api = inject(ApiService);
+  private router = inject(Router);
+  auth = inject(AuthService);
+  pt = puntaje;
+
+  /** D-52: donacion cuya trazabilidad se esta viendo (solo administrador). */
+  trazaOferta = signal<number | null>(null);
+  buscarOferta = signal('');
+
+  verTraza(ofertaId: number): void {
+    if (ofertaId > 0) this.trazaOferta.set(ofertaId);
+  }
 
   filtros = [
     { valor: 'ASIGNADO,EN_CUSTODIA', texto: 'Abiertas' },
@@ -273,6 +313,14 @@ export class CustodiaComponent implements OnInit {
         this.cargar();
       },
       error: (e) => this.error.set(mensajeError(e)),
+    });
+  }
+
+  /** Abre Emparejamiento con los candidatos compatibles del lote (KD-tree +
+   *  prioridad); alli se confirma la nueva peticion. */
+  reasignar(a: AsignacionResumen): void {
+    this.router.navigate(['/lis/emparejamiento'], {
+      queryParams: { lote: a.loteId, asignacion: a.id },
     });
   }
 

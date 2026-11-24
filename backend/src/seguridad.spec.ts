@@ -16,6 +16,7 @@ const donador = (sub: number): UsuarioActual => ({
   nombre: 'Donador ficticio',
   perfil: Perfil.DONADOR,
   roles: [],
+  esSuperusuario: false,
   esAuxiliar: false,
   esAdministrador: false,
   esPersonalLis: false,
@@ -165,6 +166,57 @@ describe('T1.3 EvidenciasService.puedeVer', () => {
 });
 
 // ---------------------------------------------------------------------------
+// D-47 — revision de la propia donacion
+// ---------------------------------------------------------------------------
+describe('D-47 OfertasService: el auxiliar no revisa sus propias donaciones; el administrador si', () => {
+  function servicio(donadorId: number) {
+    const ofertas: any = {
+      findOne: jest.fn(async () => ({
+        id: 60,
+        donadorId,
+        nombreProducto: 'Calculadora',
+        estado: EstadoOferta.PENDIENTE_APROBACION,
+      })),
+      save: jest.fn(async (x: any) => x),
+    };
+    const vacio: any = { find: jest.fn(async () => []) };
+    const historial: any = { registrar: jest.fn(async () => undefined) };
+    const notificaciones: any = { aUsuarios: jest.fn(async () => 1) };
+    const s = new OfertasService(
+      ofertas, vacio, vacio, vacio, vacio, vacio, {} as any, historial, notificaciones, {} as any,
+    );
+    // detalle() arma la respuesta con saldos; no es lo que se prueba aqui.
+    jest.spyOn(s, 'detalle').mockResolvedValue({} as any);
+    return { s, ofertas, historial };
+  }
+
+  it('auxiliar: 403 al aprobar su propia donacion y no cambia nada', async () => {
+    const { s, ofertas } = servicio(1);
+    await expect(s.aprobar(60, 1, false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ofertas.save).not.toHaveBeenCalled();
+  });
+
+  it('auxiliar: 403 al rechazar su propia donacion (antes no se validaba)', async () => {
+    const { s, ofertas } = servicio(1);
+    await expect(s.rechazar(60, 1, 'motivo de prueba', false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ofertas.save).not.toHaveBeenCalled();
+  });
+
+  it('auxiliar: si puede aprobar la donacion de otra persona', async () => {
+    const { s, ofertas } = servicio(7);
+    await s.aprobar(60, 1, false);
+    expect(ofertas.save).toHaveBeenCalledWith(expect.objectContaining({ estado: EstadoOferta.APROBADA }));
+  });
+
+  it('administrador: si puede aprobar su propia donacion y queda marcado en el historial', async () => {
+    const { s, ofertas, historial } = servicio(1);
+    await s.aprobar(60, 1, true);
+    expect(ofertas.save).toHaveBeenCalledWith(expect.objectContaining({ estado: EstadoOferta.APROBADA, revisadaPor: 1 }));
+    expect(historial.registrar.mock.calls[0][0].motivo).toContain('Autoaprobada por un administrador');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T1.4 — rol de auxiliar
 // ---------------------------------------------------------------------------
 describe('T1.4 UsuariosService.otorgarRol', () => {
@@ -195,10 +247,83 @@ describe('T1.4 UsuariosService.otorgarRol', () => {
     expect(dataSource.transaction).toHaveBeenCalled();
   });
 
-  it('ADMINISTRADOR no se restringe por perfil mientras P-03 este pendiente', async () => {
+  it('ADMINISTRADOR no se restringe por perfil mientras P-03 este pendiente (lo otorga un superusuario)', async () => {
     const { s, dataSource } = servicio(Perfil.ESTUDIANTE);
-    await s.otorgarRol(3, Rol.ADMINISTRADOR, 1);
+    await s.otorgarRol(3, Rol.ADMINISTRADOR, 1, true);
     expect(dataSource.transaction).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D-45 — SUPERUSUARIO y gestion del rol ADMINISTRADOR
+// ---------------------------------------------------------------------------
+describe('D-45 UsuariosService: solo el superusuario gestiona ADMINISTRADOR', () => {
+  function servicio(rolesObjetivo: Rol[] = []) {
+    const usuarios: any = {
+      findOne: jest.fn(async () => ({ id: 3, perfil: Perfil.DONADOR, activo: true })),
+      save: jest.fn(),
+    };
+    const roles: any = {
+      findOne: jest.fn(async ({ where }: any) =>
+        rolesObjetivo.includes(where.rol) ? { usuarioId: 3, rol: where.rol } : null,
+      ),
+      find: jest.fn(async () => rolesObjetivo.map((rol) => ({ rol }))),
+      count: jest.fn(async () => 2),
+    };
+    const historial: any = { registrar: jest.fn() };
+    const dataSource: any = {
+      transaction: jest.fn(async (cb: any) =>
+        cb({ getRepository: () => ({ create: (x: any) => x, save: jest.fn(), delete: jest.fn() }) }),
+      ),
+    };
+    return { s: new UsuariosService(usuarios, roles, historial, dataSource), dataSource, usuarios };
+  }
+
+  it('un administrador NO puede otorgar ADMINISTRADOR', async () => {
+    const { s, dataSource } = servicio();
+    await expect(s.otorgarRol(3, Rol.ADMINISTRADOR, 1, false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('un administrador NO puede revocar ADMINISTRADOR', async () => {
+    const { s, dataSource } = servicio([Rol.ADMINISTRADOR]);
+    await expect(s.revocarRol(3, Rol.ADMINISTRADOR, 1, false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('un superusuario SI puede revocar ADMINISTRADOR', async () => {
+    const { s, dataSource } = servicio([Rol.ADMINISTRADOR]);
+    await s.revocarRol(3, Rol.ADMINISTRADOR, 1, true);
+    expect(dataSource.transaction).toHaveBeenCalled();
+  });
+
+  it('nadie otorga ni revoca SUPERUSUARIO por la API, ni siquiera otro superusuario', async () => {
+    const { s, dataSource } = servicio([Rol.SUPERUSUARIO]);
+    await expect(s.otorgarRol(3, Rol.SUPERUSUARIO, 1, true)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(s.revocarRol(3, Rol.SUPERUSUARIO, 1, true)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('un administrador sigue pudiendo otorgar AUXILIAR_LIS', async () => {
+    const { s, dataSource } = servicio();
+    await s.otorgarRol(3, Rol.AUXILIAR_LIS, 1, false);
+    expect(dataSource.transaction).toHaveBeenCalled();
+  });
+
+  it('un administrador NO puede bloquear a otro administrador; un superusuario si', async () => {
+    const admin = servicio([Rol.ADMINISTRADOR]);
+    await expect(admin.s.bloquear(3, 'motivo de prueba', 1, false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(admin.usuarios.save).not.toHaveBeenCalled();
+
+    const sup = servicio([Rol.ADMINISTRADOR]);
+    await sup.s.bloquear(3, 'motivo de prueba', 1, true);
+    expect(sup.usuarios.save).toHaveBeenCalled();
+  });
+
+  it('un superusuario no se bloquea desde la API', async () => {
+    const { s, usuarios } = servicio([Rol.SUPERUSUARIO]);
+    await expect(s.bloquear(3, 'motivo de prueba', 1, true)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(usuarios.save).not.toHaveBeenCalled();
   });
 });
 

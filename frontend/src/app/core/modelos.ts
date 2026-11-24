@@ -1,5 +1,5 @@
 export type Perfil = 'ESTUDIANTE' | 'DONADOR';
-export type Rol = 'AUXILIAR_LIS' | 'ADMINISTRADOR';
+export type Rol = 'AUXILIAR_LIS' | 'ADMINISTRADOR' | 'SUPERUSUARIO';
 
 export interface Sesion {
   sub: number;
@@ -97,6 +97,18 @@ export interface MiCaracterizacion {
   respuestas: { preguntaId: number; opcionId: number }[];
 }
 
+/** Certificado de estudio vigente (D-46): opcional, solo dueno y administrador. */
+export type EstadoRevisionCertificado = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO';
+export interface CertificadoMeta {
+  nombreOriginal: string | null;
+  mime: string;
+  tamanoBytes: number;
+  subidoEn: string;
+  estadoRevision: EstadoRevisionCertificado;
+  revisadoEn: string | null;
+  observacion: string | null;
+}
+
 /** Componentes del puntaje de prioridad (numeros reales en [0,1], no porcentajes). */
 export interface Prioridad {
   sisben: number;
@@ -161,13 +173,19 @@ export interface LoteFisico {
   origen: string;
   titular: { tipo: 'ASIGNACION' | 'LOCAL'; id: number; estado: string } | null;
   sinDestino: boolean;
+  /** D-50: en custodia temporal LOCAL; se puede emparejar directo. */
+  enCustodiaLocal?: boolean;
   sinDestinoDesde: string | null;
   creadoEn: string;
 }
 
+export type EstadoLocal =
+  | 'ESPERA_RECEPCION' | 'CUSTODIA_TEMPORAL' | 'PROPUESTO_DONADOR' | 'POR_DEVOLVER'
+  | 'ACEPTADO' | 'REASIGNADO' | 'DEVUELTO' | 'CANCELADO';
+
 export interface DestinoLocal {
   id: number;
-  estado: 'ESPERA_RECEPCION' | 'CUSTODIA_TEMPORAL' | 'ACEPTADO' | 'REASIGNADO' | 'DEVUELTO' | 'CANCELADO';
+  estado: EstadoLocal;
   origen: 'OFERTA' | 'LOTE';
   ofertaId: number;
   producto: string;
@@ -181,6 +199,31 @@ export interface DestinoLocal {
   aceptadoPor: number | null;
   aceptadoEn: string | null;
   motivoCierre: string | null;
+  /** D-50: propuesta al donador y su respuesta. */
+  propuestaMotivo?: string | null;
+  propuestaLimite?: string | null;
+  respuestaDonador?: 'ACEPTA' | 'RECHAZA' | null;
+  respuestaEn?: string | null;
+  respuestaMotivo?: string | null;
+  /** Contacto del donador (solo personal LIS). */
+  donador?: { id: number; nombre: string; email: string };
+}
+
+/** D-50: propuesta del LIS vista por el donador en "Mis donaciones". */
+export interface PropuestaLocal {
+  id: number;
+  estado: EstadoLocal;
+  ofertaId: number;
+  producto: string;
+  categoria: string;
+  fotoId: number | null;
+  cantidad: number;
+  motivo: string | null;
+  limite: string | null;
+  propuestaEn: string;
+  respuesta: 'ACEPTA' | 'RECHAZA' | null;
+  respuestaEn: string | null;
+  respuestaMotivo: string | null;
 }
 
 export interface NotificacionBandeja {
@@ -190,11 +233,49 @@ export interface NotificacionBandeja {
   mensaje: string;
   entidad: string | null;
   entidadId: number | null;
+  /** D-51: foto adjunta (p. ej. entrega final al beneficiario). */
+  evidenciaId?: number | null;
   creadaEn: string;
   leida: boolean;
 }
 
-export type DecisionTarea = 'APLAZAR' | 'CANCELAR_INTENTO' | 'EXTENDER' | 'REASIGNAR' | 'DEVOLUCION' | 'CUSTODIA_LOCAL' | 'SIN_ACCION';
+/** D-52: trazabilidad completa de una donacion (solo administrador). */
+export interface EventoTrazabilidad {
+  id: string;
+  fecha: string;
+  clase: 'ESTADO' | 'MOVIMIENTO';
+  grupo: 'OFERTA' | 'ASIGNACION' | 'LOTE' | 'LOCAL';
+  referencia: string;
+  estadoAnterior: string | null;
+  estadoNuevo: string | null;
+  tipoMovimiento: string | null;
+  actor: string;
+  explicacion: string | null;
+  cantidad: number | null;
+  contraparte: string | null;
+  evidenciaId: number | null;
+}
+
+export interface Trazabilidad {
+  oferta: {
+    id: number;
+    producto: string;
+    categoria: string | null;
+    cantidad: number;
+    estado: string;
+    origen: string;
+    ofertaOrigenId: number | null;
+    fotoId: number | null;
+    creadaEn: string;
+    donador: { nombre: string; email: string } | null;
+  };
+  asignaciones: { id: number; estado: string; origen: string; cantidad: number; peticionId: number; estudiante: string | null }[];
+  derivadas: { id: number; cantidad: number }[];
+  resumen: { eventos: number; cambiosDeEstado: number; movimientosFisicos: number; fotos: number };
+  eventos: EventoTrazabilidad[];
+}
+
+export type DecisionTarea = 'APLAZAR' | 'CANCELAR_INTENTO' | 'EXTENDER' | 'REASIGNAR' | 'DEVOLUCION' | 'CUSTODIA_LOCAL' | 'RETIRAR_PROPUESTA' | 'SIN_ACCION';
 
 export interface TareaDefinirEstado {
   id: number;
@@ -214,6 +295,8 @@ export interface TareaDefinirEstado {
 export interface AsignacionResumen {
   id: number;
   estado: string;
+  /** Lote fisico (solo cuando el producto ya paso por el LIS). */
+  loteId?: number | null;
   cantidadAsignada: number;
   asignadaEn: string;
   recibidaEn: string | null;
@@ -341,6 +424,9 @@ export interface FilaRankingEstudiante {
 
 /** Donadores: indicador directo (D-40). */
 export interface FilaRankingDonador {
+  /** D-49: completadas >= umbralRecurrente (parametro MIN_DONACIONES_RECURRENTE). */
+  recurrente: boolean;
+  umbralRecurrente: number;
   posicion: number;
   usuarioId: number;
   nombre: string | null;

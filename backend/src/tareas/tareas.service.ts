@@ -12,7 +12,7 @@ import { In, Repository } from 'typeorm';
 import { AsignacionesService } from '../asignaciones/asignaciones.service';
 import { UsuarioActual } from '../auth/auth.types';
 import { CalendarioService } from '../calendario/calendario.service';
-import { fechaEnBogota, sumarDiasHabiles } from '../calendario/dias-habiles';
+import { fechaEnBogota, restarDiasHabiles, sumarDiasHabiles } from '../calendario/dias-habiles';
 import { ASIGNACION_VIGENTE, EstadoAsignacion } from '../common/enums';
 import { ParametrosService } from '../common/parametros.service';
 import { DecisionTarea, DestinoLocal, LoteFisico, OfertaXPeticion, Tarea } from '../entities';
@@ -170,10 +170,50 @@ export class TareasService implements OnModuleInit, OnModuleDestroy {
       await this.notificaciones.aPersonalLis({
         tipo: 'TAREA_DEFINIR_ESTADO',
         titulo: `DEFINIR_ESTADO: custodia LOCAL ${d.id}`,
-        mensaje: `La custodia temporal del destino LOCAL ${d.id} supero ${diasLocal} dias habiles (limite ${limite}). Decide: reasignar, devolver o solicitar aceptacion institucional.`,
+        mensaje: `La custodia temporal del destino LOCAL ${d.id} supero ${diasLocal} dias habiles (limite ${limite}). Decide: emparejar con un estudiante, devolver o (administrador) proponer al donador que quede para el LIS.`,
         entidad: 'LOCAL',
         entidadId: d.id,
         clave: `CUSTODIA:LOCAL:${d.id}:${limite}`,
+      });
+    }
+
+    // 3b) D-50: propuesta LOCAL sin respuesta del donador. Nunca se acepta
+    //     por silencio: al vencer se crea una tarea y se avisa a ambos.
+    const propuestas = await this.destinos.find({ where: { estado: 'PROPUESTO_DONADOR' }, relations: { oferta: true } });
+    const hoy = fechaEnBogota(ahora);
+    for (const d of propuestas) {
+      if (!d.propuestaLimite) continue;
+      const limite = String(d.propuestaLimite).slice(0, 10);
+      const producto = recorte(d.oferta?.nombreProducto);
+      if (hoy <= limite) {
+        if (hoy >= restarDiasHabiles(limite, cfg.avisoPrevio, cierres)) {
+          r.avisosProximos += await this.notificaciones.aUsuarios([d.oferta?.donadorId], {
+            tipo: 'PLAZO_PROXIMO',
+            titulo: 'Responde la propuesta del LIS',
+            mensaje: `Tienes hasta el ${limite} para aceptar o rechazar que "${producto}" quede para el LIS. Hazlo en "Mis donaciones".`,
+            entidad: 'LOCAL',
+            entidadId: d.id,
+            clave: `PROPUESTA:LOCAL:${d.id}:${limite}:PROXIMO`,
+          });
+        }
+        continue;
+      }
+      if (await this.crearTarea({ clave: `PROPUESTA:LOCAL:${d.id}:${limite}`, destinoLocalId: d.id, loteId: d.loteId, responsable: 'DONADOR', fechaLimite: limite })) r.tareasCreadas++;
+      r.avisosVencidos += await this.notificaciones.aUsuarios([d.oferta?.donadorId], {
+        tipo: 'PLAZO_VENCIDO',
+        titulo: 'Vencio el plazo para responder al LIS',
+        mensaje: `No recibimos tu respuesta sobre "${producto}" (limite ${limite}). El LIS se comunicara contigo; el producto NO queda para el LIS sin tu consentimiento.`,
+        entidad: 'LOCAL',
+        entidadId: d.id,
+        clave: `PROPUESTA:LOCAL:${d.id}:${limite}:VENCIDO`,
+      });
+      await this.notificaciones.aPersonalLis({
+        tipo: 'TAREA_DEFINIR_ESTADO',
+        titulo: `DEFINIR_ESTADO: propuesta LOCAL ${d.id} sin respuesta`,
+        mensaje: `El donador no respondio la propuesta del destino LOCAL ${d.id} (limite ${limite}). Contactalo y decide: seguir esperando, retirar la propuesta o pasar a devolucion.`,
+        entidad: 'LOCAL',
+        entidadId: d.id,
+        clave: `PROPUESTA:LOCAL:${d.id}:${limite}:VENCIDO`,
       });
     }
 
@@ -222,7 +262,9 @@ export class TareasService implements OnModuleInit, OnModuleDestroy {
         vigente = !!p && p.estado === 'VENCIDO' && p.fechaLimite === t.fechaLimite;
       } else if (t.destinoLocalId) {
         const d = await this.destinos.findOne({ where: { id: t.destinoLocalId } });
-        vigente = !!d && (d.estado === 'ESPERA_RECEPCION' || d.estado === 'CUSTODIA_TEMPORAL');
+        vigente = t.clave.startsWith('PROPUESTA:')
+          ? !!d && d.estado === 'PROPUESTO_DONADOR' // el donador respondio o se retiro
+          : !!d && (d.estado === 'ESPERA_RECEPCION' || d.estado === 'CUSTODIA_TEMPORAL');
       } else if (t.loteId) {
         const l = await this.lotes.findOne({ where: { id: t.loteId } });
         vigente = !!l && l.ubicacion === 'EN_LIS' && !!l.sinDestinoDesde;
@@ -277,8 +319,9 @@ export class TareasService implements OnModuleInit, OnModuleDestroy {
           if (a.estado !== EstadoAsignacion.EN_CUSTODIA || !a.loteId) {
             throw new BadRequestException('Solo se reasigna un producto que esta EN_CUSTODIA.');
           }
-          await this.asignaciones.cancelar(a.id, `Reasignacion: ${motivo}`, actual.sub);
-          await this.asignaciones.reasignarLote(a.loteId, destino, actual.sub);
+          // Antes: cancelar y reasignar en DOS transacciones. Si la segunda
+          // fallaba, la peticion original quedaba cerrada y el lote sin destino.
+          await this.asignaciones.reasignarDesdeCustodia(a.id, destino, motivo, actual.sub);
           break;
         }
         case 'CUSTODIA_LOCAL':
@@ -296,6 +339,23 @@ export class TareasService implements OnModuleInit, OnModuleDestroy {
     } else if (t.destinoLocalId) {
       const d = await this.destinos.findOne({ where: { id: t.destinoLocalId } });
       if (!d) throw new NotFoundException('El destino LOCAL de la tarea no existe.');
+      if (d.estado === 'PROPUESTO_DONADOR') {
+        // D-50: propuesta sin respuesta. Nunca se acepta sin consentimiento.
+        switch (decision) {
+          case 'SIN_ACCION':
+            break; // se contacto al donador y se sigue esperando su respuesta
+          case 'RETIRAR_PROPUESTA':
+            await this.local.retirarPropuesta(d.id, motivo, actual);
+            break;
+          case 'DEVOLUCION':
+            await this.local.marcarPorDevolver(d.id, motivo, actual.sub);
+            break;
+          default:
+            throw new BadRequestException(`Decision ${decision} no aplica a una propuesta sin respuesta. Usa SIN_ACCION, RETIRAR_PROPUESTA o DEVOLUCION.`);
+        }
+        await this.tareas.update({ id }, { estado: 'RESUELTA', decision, motivo, resueltaPor: actual.sub, resueltaEn: new Date() });
+        return this.tareas.findOne({ where: { id } });
+      }
       switch (decision) {
         case 'CANCELAR_INTENTO':
           await this.local.cancelar(d.id, motivo, actual.sub);

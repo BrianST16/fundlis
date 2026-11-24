@@ -5,6 +5,10 @@ import { Oferta } from './oferta.entity';
 export type EstadoLocal =
   | 'ESPERA_RECEPCION'
   | 'CUSTODIA_TEMPORAL'
+  /** D-50: el administrador propuso quedarselo; espera respuesta del donador. */
+  | 'PROPUESTO_DONADOR'
+  /** D-50: el donador rechazo; el LIS debe devolverselo (con foto). */
+  | 'POR_DEVOLVER'
   | 'ACEPTADO'
   | 'REASIGNADO'
   | 'DEVUELTO'
@@ -68,6 +72,23 @@ export class DestinoLocal {
 
   @Column({ name: 'aceptado_en', type: 'datetime2', nullable: true })
   aceptadoEn: Date | null;
+
+  // --- D-50: propuesta al donador (aceptacion_solicitada_* = admin que propone) ---
+  @Column({ name: 'propuesta_motivo', type: 'nvarchar', length: 400, nullable: true })
+  propuestaMotivo: string | null;
+
+  /** Fecha civil AAAA-MM-DD (dias habiles, America/Bogota). */
+  @Column({ name: 'propuesta_limite', type: 'date', nullable: true })
+  propuestaLimite: string | null;
+
+  @Column({ name: 'respuesta_donador', type: 'varchar', length: 10, nullable: true })
+  respuestaDonador: 'ACEPTA' | 'RECHAZA' | null;
+
+  @Column({ name: 'respuesta_en', type: 'datetime2', nullable: true })
+  respuestaEn: Date | null;
+
+  @Column({ name: 'respuesta_motivo', type: 'nvarchar', length: 400, nullable: true })
+  respuestaMotivo: string | null;
 
   @Column({ name: 'cerrado_en', type: 'datetime2', nullable: true })
   cerradoEn: Date | null;

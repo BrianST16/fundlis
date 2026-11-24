@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ApiService } from '../core/api.service';
+import { FotoComponent } from '../compartido/foto.component';
 import { AuthService } from '../core/auth.service';
 import { NotificacionBandeja } from '../core/modelos';
 import { fecha, mensajeError } from '../core/utilidades';
@@ -9,12 +10,11 @@ import { fecha, mensajeError } from '../core/utilidades';
 @Component({
   selector: 'lis-bandeja',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FotoComponent],
   template: `
     <h1>Bandeja</h1>
     <p class="subtitulo">
-      Avisos de la plataforma. Cada aviso tambien se envia a tu correo registrado cuando el
-      servidor de correo esta configurado.
+      Avisos de la plataforma. Por ahora las notificaciones llegan solo a esta bandeja interna.
     </p>
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (correo(); as c) {
@@ -36,6 +36,12 @@ import { fecha, mensajeError } from '../core/utilidades';
           <span class="dato">{{ f(n.creadaEn) }}</span>
         </div>
         <p style="margin:.4rem 0">{{ n.mensaje }}</p>
+        @if (n.evidenciaId) {
+          <!-- D-51: foto adjunta (p. ej. entrega final). Clic para ampliar. -->
+          <div style="max-width:260px; margin-bottom:.4rem">
+            <lis-foto [evidenciaId]="n.evidenciaId" [alt]="n.titulo" />
+          </div>
+        }
         @if (!n.leida) { <button class="secundario pequeno" (click)="leer(n)">Marcar como leida</button> }
       </div>
     } @empty { <p class="vacio">No tienes avisos.</p> }

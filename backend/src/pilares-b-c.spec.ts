@@ -238,8 +238,22 @@ describe('Pilar C: AnaliticaService con datos ficticios', () => {
       {
         pesosReputacion: async () => ({ cumplimiento: 0.85, actividad: 0.15 }),
         reglaAlerta: async () => ({ umbralFallos: 2, umbralReputacion: 0.4 }),
+        minDonacionesRecurrente: async () => umbralRecurrente,
       } as any,
     );
+  let umbralRecurrente = 3;
+  afterEach(() => (umbralRecurrente = 3));
+
+  it('D-49: donador recurrente = completadas >= umbral configurable (por defecto 3)', async () => {
+    // Donador 7 tiene 2 completadas: con umbral 3 no es recurrente.
+    let r: any[] = await servicio().rankingDonadores();
+    expect(r.find((x) => x.usuarioId === 7)).toMatchObject({ completadas: 2, recurrente: false, umbralRecurrente: 3 });
+    // Con umbral 2 si lo es; el donador 8 (sin historial) nunca.
+    umbralRecurrente = 2;
+    r = await servicio().rankingDonadores();
+    expect(r.find((x) => x.usuarioId === 7).recurrente).toBe(true);
+    expect(r.find((x) => x.usuarioId === 8).recurrente).toBe(false);
+  });
 
   it('indicadores coinciden con el calculo manual', async () => {
     const i = await servicio().indicadores();

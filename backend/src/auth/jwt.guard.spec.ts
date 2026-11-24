@@ -108,5 +108,17 @@ describe('JwtGuard (revalidacion contra la BD)', () => {
     expect(req.usuario.esAdministrador).toBe(true);
     expect(req.usuario.esPersonalLis).toBe(true);
     expect(req.usuario.esAuxiliar).toBe(false);
+    expect(req.usuario.esSuperusuario).toBe(false);
+  });
+
+  it('D-45: superusuario vigente tiene acceso total (cuenta como administrador y personal LIS)', async () => {
+    const { guard } = crearGuard({
+      vigente: { ...payloadToken, roles: [Rol.SUPERUSUARIO] },
+    });
+    const { ctx, req } = contexto('Bearer token-firmado');
+    await guard.canActivate(ctx);
+    expect(req.usuario.esSuperusuario).toBe(true);
+    expect(req.usuario.esAdministrador).toBe(true);
+    expect(req.usuario.esPersonalLis).toBe(true);
   });
 });

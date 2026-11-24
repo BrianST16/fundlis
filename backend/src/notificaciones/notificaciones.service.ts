@@ -13,6 +13,10 @@ export interface Aviso {
   entidadId?: number;
   /** Identifica el evento. Con el usuario forma la clave de idempotencia. */
   clave: string;
+  /** D-51: foto adjunta; el destinatario queda autorizado a verla. */
+  evidenciaId?: number;
+  /** D-51: no encolar correo (solo bandeja interna). */
+  soloBandeja?: boolean;
 }
 
 /**
@@ -101,6 +105,7 @@ export class NotificacionesService {
           entidad: aviso.entidad ?? null,
           entidadId: aviso.entidadId ?? null,
           clave: aviso.clave.slice(0, 160),
+          evidenciaId: aviso.evidenciaId ?? null,
         }),
       );
     } catch (e: any) {
@@ -110,7 +115,7 @@ export class NotificacionesService {
       throw e;
     }
 
-    if (usuario.activo && usuario.email) {
+    if (usuario.activo && usuario.email && !aviso.soloBandeja) {
       await this.correos.save(
         this.correos.create({
           notificacionId: n.id,
@@ -143,6 +148,7 @@ export class NotificacionesService {
       mensaje: n.mensaje,
       entidad: n.entidad,
       entidadId: n.entidadId,
+      evidenciaId: n.evidenciaId ?? null,
       creadaEn: n.creadaEn,
       leida: !!n.leidaEn,
     }));

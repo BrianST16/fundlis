@@ -122,7 +122,7 @@ export class OfertasController {
   @Roles(Rol.AUXILIAR_LIS)
   @Patch(':id/aprobar')
   aprobar(@Param('id', ParseIntPipe) id: number, @Actual() actual: UsuarioActual) {
-    return this.servicio.aprobar(id, actual.sub);
+    return this.servicio.aprobar(id, actual.sub, actual.esAdministrador);
   }
 
   @Roles(Rol.AUXILIAR_LIS)
@@ -132,7 +132,7 @@ export class OfertasController {
     @Body() dto: MotivoDto,
     @Actual() actual: UsuarioActual,
   ) {
-    return this.servicio.rechazar(id, actual.sub, dto.motivo);
+    return this.servicio.rechazar(id, actual.sub, dto.motivo, actual.esAdministrador);
   }
 
   @Roles(Rol.AUXILIAR_LIS)

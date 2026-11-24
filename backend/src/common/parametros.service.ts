@@ -102,6 +102,17 @@ export class ParametrosService {
     };
   }
 
+  /** D-49: donaciones COMPLETADAS (llegaron completas al LIS) a partir de
+   *  las cuales un donador se muestra como recurrente en Aprobaciones. */
+  async minDonacionesRecurrente(): Promise<number> {
+    return this.numero('MIN_DONACIONES_RECURRENTE', 3);
+  }
+
+  /** D-50: dias habiles para que el donador responda la propuesta LOCAL. */
+  async plazoRespuestaDonadorLocal(): Promise<number> {
+    return this.numero('PLAZO_RESPUESTA_DONADOR_LOCAL', 5);
+  }
+
   async reglaAlerta(): Promise<{ umbralFallos: number; umbralReputacion: number }> {
     return {
       umbralFallos: await this.numero('ALERTA_UMBRAL_FALLOS', 2),

@@ -4,7 +4,7 @@ import { AsignacionesModule } from '../asignaciones/asignaciones.module';
 import { EmparejamientoModule } from '../emparejamiento/emparejamiento.module';
 import { DestinoLocal, LoteFisico, OfertaXPeticion } from '../entities';
 import { EvidenciasModule } from '../evidencias/evidencias.module';
-import { LocalController } from './local.controller';
+import { LocalController, LocalDonadorController } from './local.controller';
 import { LocalService } from './local.service';
 
 @Module({
@@ -14,7 +14,7 @@ import { LocalService } from './local.service';
     EmparejamientoModule,
     EvidenciasModule,
   ],
-  controllers: [LocalController],
+  controllers: [LocalDonadorController, LocalController],
   providers: [LocalService],
   exports: [LocalService],
 })

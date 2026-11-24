@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ApiService } from '../core/api.service';
-import { UsuarioAdmin } from '../core/modelos';
-import { fecha, mensajeError, porcentaje } from '../core/utilidades';
+import { AuthService } from '../core/auth.service';
+import { CertificadoMeta, UsuarioAdmin } from '../core/modelos';
+import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
 
 /** Gestion de usuarios y roles. Solo administrador.
  *  La caracterizacion es un dato sensible: se consulta aparte y a peticion. */
@@ -14,7 +15,8 @@ import { fecha, mensajeError, porcentaje } from '../core/utilidades';
     <h1>Usuarios y roles</h1>
     <p class="subtitulo">
       El perfil lo determina el dominio del correo verificado por Google y no se puede cambiar
-      aqui. Los roles de auxiliar y administrador si los otorgas tu.
+      aqui. El rol de auxiliar lo otorgas tu; el de administrador solo lo gestiona un
+      superusuario. El rol de superusuario solo se asigna por script de mantenimiento.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
@@ -42,7 +44,7 @@ import { fecha, mensajeError, porcentaje } from '../core/utilidades';
       </thead>
       <tbody>
         @for (u of usuarios(); track u.id) {
-          <tr>
+          <tr [id]="'fila-usuario-' + u.id" [class.seleccionada]="seleccionado()?.id === u.id">
             <td>
               <strong>{{ u.nombre }}</strong><br />
               <span class="dato">{{ u.email }}</span>
@@ -61,28 +63,36 @@ import { fecha, mensajeError, porcentaje } from '../core/utilidades';
             <td class="dato">{{ f(u.ultimoIngresoEn) }}</td>
             <td>
               <div class="fila">
-                @if (!u.roles.includes('AUXILIAR_LIS')) {
-                  <button class="secundario pequeno" (click)="otorgar(u, 'AUXILIAR_LIS')">
-                    + Auxiliar
-                  </button>
+                @if (u.roles.includes('SUPERUSUARIO')) {
+                  <span class="dato">Gestionado solo por script</span>
                 } @else {
-                  <button class="peligro pequeno" (click)="revocar(u, 'AUXILIAR_LIS')">
-                    - Auxiliar
-                  </button>
-                }
-                @if (!u.roles.includes('ADMINISTRADOR')) {
-                  <button class="secundario pequeno" (click)="otorgar(u, 'ADMINISTRADOR')">
-                    + Admin
-                  </button>
-                } @else {
-                  <button class="peligro pequeno" (click)="revocar(u, 'ADMINISTRADOR')">
-                    - Admin
-                  </button>
-                }
-                @if (u.activo) {
-                  <button class="peligro pequeno" (click)="bloquear(u)">Bloquear</button>
-                } @else {
-                  <button class="pequeno" (click)="desbloquear(u)">Desbloquear</button>
+                  @if (!u.roles.includes('AUXILIAR_LIS')) {
+                    <button class="secundario pequeno" (click)="otorgar(u, 'AUXILIAR_LIS')">
+                      + Auxiliar
+                    </button>
+                  } @else {
+                    <button class="peligro pequeno" (click)="revocar(u, 'AUXILIAR_LIS')">
+                      - Auxiliar
+                    </button>
+                  }
+                  @if (auth.esSuperusuario()) {
+                    @if (!u.roles.includes('ADMINISTRADOR')) {
+                      <button class="secundario pequeno" (click)="otorgar(u, 'ADMINISTRADOR')">
+                        + Admin
+                      </button>
+                    } @else {
+                      <button class="peligro pequeno" (click)="revocar(u, 'ADMINISTRADOR')">
+                        - Admin
+                      </button>
+                    }
+                  }
+                  @if (puedeBloquear(u)) {
+                    @if (u.activo) {
+                      <button class="peligro pequeno" (click)="bloquear(u)">Bloquear</button>
+                    } @else {
+                      <button class="pequeno" (click)="desbloquear(u)">Desbloquear</button>
+                    }
+                  }
                 }
                 @if (u.perfil === 'ESTUDIANTE') {
                   <button class="secundario pequeno" (click)="verCaracterizacion(u)">
@@ -100,24 +110,53 @@ import { fecha, mensajeError, porcentaje } from '../core/utilidades';
       <p class="vacio">No hay usuarios registrados todavia.</p>
     }
 
-    @if (detalle(); as d) {
-      <h2>Caracterizacion de {{ d.usuario.nombre }}</h2>
+    @if (seleccionado(); as s) {
+      <h2 id="panel-caracterizacion" style="scroll-margin-top:1rem">Caracterizacion de {{ s.nombre }}</h2>
       <div class="tarjeta">
-        <p class="dato">
-          Grupo Sisben <strong>{{ d.grupoSisben }}</strong> ({{ d.descripcionSisben }}) &middot;
-          puntaje <strong>{{ pct(d.puntajeTotal) }}</strong>
-        </p>
-        <table>
-          <tbody>
-            @for (r of d.respuestas; track r.pregunta) {
-              <tr>
-                <td>{{ r.pregunta }}</td>
-                <td><strong>{{ r.respuesta }}</strong></td>
-              </tr>
+        @if (detalle(); as d) {
+          <p class="dato">
+            Grupo Sisben <strong>{{ d.grupoSisben }}</strong> ({{ d.descripcionSisben }}) &middot;
+            puntaje de caracterizacion <strong>{{ pt(d.puntajeTotal) }}</strong>
+            <span class="dato">(0 a 1)</span>
+          </p>
+          <table>
+            <tbody>
+              @for (r of d.respuestas; track r.pregunta) {
+                <tr>
+                  <td>{{ r.pregunta }}</td>
+                  <td><strong>{{ r.respuesta }}</strong></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="vacio">Este estudiante aun no tiene caracterizacion.</p>
+        }
+
+        <h3 style="margin-top:1rem">Certificado de estudio (opcional)</h3>
+        @if (certificado(); as c) {
+          <div class="fila">
+            <span class="etiqueta"
+                  [class.gris]="c.estadoRevision === 'PENDIENTE'"
+                  [class.roja]="c.estadoRevision === 'RECHAZADO'">{{ c.estadoRevision }}</span>
+            <span class="dato">{{ c.nombreOriginal ?? 'certificado' }} &middot; subido {{ f(c.subidoEn) }}</span>
+            @if (c.revisadoEn) { <span class="dato">&middot; revisado {{ f(c.revisadoEn) }}</span> }
+          </div>
+          @if (c.observacion) { <p class="dato">Observacion: <em>{{ c.observacion }}</em></p> }
+          <div class="fila" style="margin-top:.5rem">
+            <button class="secundario pequeno" (click)="verCertificado(s)">Ver certificado</button>
+            @if (c.estadoRevision !== 'VALIDADO') {
+              <button class="pequeno" (click)="revisarCertificado(s, 'VALIDADO')">Validar</button>
             }
-          </tbody>
-        </table>
-        <button class="secundario pequeno" style="margin-top:.75rem" (click)="detalle.set(null)">
+            @if (c.estadoRevision !== 'RECHAZADO') {
+              <button class="peligro pequeno" (click)="revisarCertificado(s, 'RECHAZADO')">Rechazar</button>
+            }
+          </div>
+        } @else {
+          <p class="vacio">No ha cargado certificado.</p>
+        }
+
+        <button class="secundario pequeno" style="margin-top:.75rem" (click)="cerrarDetalle()">
           Cerrar
         </button>
       </div>
@@ -126,14 +165,17 @@ import { fecha, mensajeError, porcentaje } from '../core/utilidades';
 })
 export class UsuariosComponent implements OnInit {
   private api = inject(ApiService);
+  auth = inject(AuthService);
 
   usuarios = signal<UsuarioAdmin[]>([]);
   detalle = signal<any | null>(null);
+  seleccionado = signal<UsuarioAdmin | null>(null);
+  certificado = signal<CertificadoMeta | null>(null);
   buscar = signal('');
   error = signal<string | null>(null);
   mensaje = signal<string | null>(null);
   f = fecha;
-  pct = porcentaje;
+  pt = puntaje;
 
   ngOnInit(): void {
     this.cargar();
@@ -146,9 +188,17 @@ export class UsuariosComponent implements OnInit {
     });
   }
 
+  /** Solo es una ayuda visual: el backend aplica la misma regla (D-45). */
+  puedeBloquear(u: UsuarioAdmin): boolean {
+    if (u.id === this.auth.sesion()?.sub) return false;
+    if (u.roles.includes('SUPERUSUARIO')) return false;
+    if (u.roles.includes('ADMINISTRADOR')) return this.auth.esSuperusuario();
+    return true;
+  }
+
   otorgar(u: UsuarioAdmin, rol: string): void {
     this.api.otorgarRol(u.id, rol).subscribe({
-      next: () => this.hecho(`Rol ${rol} otorgado a ${u.nombre}.`),
+      next: () => this.hecho(`Rol ${rol} otorgado a ${u.nombre}.`, u),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
@@ -156,7 +206,7 @@ export class UsuariosComponent implements OnInit {
   revocar(u: UsuarioAdmin, rol: string): void {
     if (!confirm(`Revocar el rol ${rol} a ${u.nombre}?`)) return;
     this.api.revocarRol(u.id, rol).subscribe({
-      next: () => this.hecho(`Rol ${rol} revocado a ${u.nombre}.`),
+      next: () => this.hecho(`Rol ${rol} revocado a ${u.nombre}.`, u),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
@@ -178,16 +228,67 @@ export class UsuariosComponent implements OnInit {
   }
 
   verCaracterizacion(u: UsuarioAdmin): void {
+    this.seleccionado.set(u);
     this.detalle.set(null);
+    this.certificado.set(null);
+    // El panel se dibuja al final de la pagina: se baja hasta el
+    // automaticamente (setTimeout espera a que Angular lo renderice).
+    this.desplazarA('panel-caracterizacion');
     this.api.caracterizacionDe(u.id).subscribe({
       next: (d) => this.detalle.set(d),
-      error: (e) => this.error.set(mensajeError(e, 'Ese estudiante no tiene caracterizacion.')),
+      // 404 = aun no se caracterizo: se muestra en la tarjeta, no es un error.
+      error: (e) => { if (e?.status !== 404) this.error.set(mensajeError(e)); },
+    });
+    this.api.certificadoDe(u.id).subscribe({
+      next: (c) => this.certificado.set(c),
+      error: (e) => this.error.set(mensajeError(e)),
     });
   }
 
-  private hecho(texto: string): void {
+  cerrarDetalle(): void {
+    const id = this.seleccionado()?.id;
+    this.seleccionado.set(null);
+    this.detalle.set(null);
+    this.certificado.set(null);
+    // Al cerrar, se vuelve a la fila del usuario que se estaba revisando.
+    if (id) this.desplazarA(`fila-usuario-${id}`, 'center');
+  }
+
+  private desplazarA(idElemento: string, bloque: ScrollLogicalPosition = 'start'): void {
+    setTimeout(() =>
+      document.getElementById(idElemento)?.scrollIntoView({ behavior: 'smooth', block: bloque }),
+    );
+  }
+
+  verCertificado(u: UsuarioAdmin): void {
+    this.api.archivoCertificadoDe(u.id).subscribe({
+      next: (b) => abrirBlob(b, this.certificado()?.nombreOriginal ?? `certificado-${u.id}`),
+      error: (e) => this.error.set(mensajeError(e, 'No se pudo abrir el certificado.')),
+    });
+  }
+
+  revisarCertificado(u: UsuarioAdmin, estado: 'VALIDADO' | 'RECHAZADO'): void {
+    let observacion: string | undefined;
+    if (estado === 'RECHAZADO') {
+      const motivo = prompt('Motivo del rechazo (minimo 5 caracteres):');
+      if (!motivo || motivo.trim().length < 5) return;
+      observacion = motivo.trim();
+    }
+    this.api.revisarCertificado(u.id, estado, observacion).subscribe({
+      next: (c) => {
+        this.certificado.set(c);
+        this.mensaje.set(`Certificado de ${u.nombre}: ${estado}.`);
+        this.error.set(null);
+      },
+      error: (e) => this.error.set(mensajeError(e)),
+    });
+  }
+
+  private hecho(texto: string, afectado?: UsuarioAdmin): void {
     this.mensaje.set(texto);
     this.error.set(null);
     this.cargar();
+    // Si cambie mis propios roles, mi menu y permisos se actualizan ya.
+    if (afectado && afectado.id === this.auth.sesion()?.sub) this.auth.refrescarSesion();
   }
 }

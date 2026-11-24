@@ -8,6 +8,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { FotoComponent } from '../compartido/foto.component';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { Categoria, OfertaCatalogo, PeticionVista } from '../core/modelos';
@@ -18,7 +19,7 @@ import { fecha, mensajeError } from '../core/utilidades';
 @Component({
   selector: 'lis-catalogo',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FotoComponent],
   template: `
     <h1>Catalogo del LIS</h1>
     <p class="subtitulo">
@@ -63,7 +64,7 @@ import { fecha, mensajeError } from '../core/utilidades';
       @for (o of ofertas(); track o.id) {
         <div class="tarjeta">
           @if (o.fotoId) {
-            <img class="foto" [src]="api.urlFoto(o.fotoId)" [alt]="o.nombreProducto" />
+            <lis-foto [evidenciaId]="o.fotoId" [alt]="o.nombreProducto" />
           }
           <span class="etiqueta">{{ o.categoria.nombre }}</span>
           <h3 style="margin:.5rem 0 .25rem; font-size:1rem">{{ o.nombreProducto }}</h3>

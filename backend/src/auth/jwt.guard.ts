@@ -68,12 +68,17 @@ export class JwtGuard implements CanActivate {
     }
 
     const roles = vigente.roles ?? [];
+    // SUPERUSUARIO tiene acceso total: cuenta como administrador (y por
+    // tanto como personal LIS) en todos los controles existentes.
+    const esSuperusuario = roles.includes(Rol.SUPERUSUARIO);
+    const esAdministrador = esSuperusuario || roles.includes(Rol.ADMINISTRADOR);
     const usuario: UsuarioActual = {
       ...vigente,
       roles,
+      esSuperusuario,
       esAuxiliar: roles.includes(Rol.AUXILIAR_LIS),
-      esAdministrador: roles.includes(Rol.ADMINISTRADOR),
-      esPersonalLis: roles.includes(Rol.AUXILIAR_LIS) || roles.includes(Rol.ADMINISTRADOR),
+      esAdministrador,
+      esPersonalLis: esAdministrador || roles.includes(Rol.AUXILIAR_LIS),
     };
     req.usuario = usuario;
     return true;

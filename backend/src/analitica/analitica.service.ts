@@ -131,8 +131,14 @@ export class AnaliticaService {
   // Donadores: completadas frente a fallidas (indicador directo)
   // ------------------------------------------------------------------
   async rankingDonadores() {
-    const { ranking, identidades } = await this.calcularDonadores();
+    const [{ ranking, identidades }, umbralRecurrente] = await Promise.all([
+      this.calcularDonadores(),
+      this.parametros.minDonacionesRecurrente(),
+    ]);
     return ranking.map((f) => ({
+      // D-49: apoyo para Aprobaciones. Es INFORMATIVO: no aprueba solo.
+      recurrente: f.completadas >= umbralRecurrente,
+      umbralRecurrente,
       posicion: f.posicion,
       usuarioId: f.id,
       nombre: identidades.get(f.id)?.nombre ?? null,
