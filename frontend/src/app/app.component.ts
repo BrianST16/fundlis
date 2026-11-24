@@ -64,25 +64,33 @@ export class AppComponent implements OnInit, OnDestroy {
   /** Avisos sin leer de la bandeja interna (se refresca cada minuto). */
   noLeidas = signal(0);
   private temporizador: ReturnType<typeof setInterval> | null = null;
+  /** Al volver a la pestana se releen avisos y permisos (roles cambiados). */
+  private alEnfocar = () => this.refrescar(true);
 
   ngOnInit(): void {
     this.refrescar();
-    this.temporizador = setInterval(() => this.refrescar(), 60_000);
+    this.temporizador = setInterval(() => this.refrescar(true), 60_000);
+    window.addEventListener('focus', this.alEnfocar);
   }
 
   ngOnDestroy(): void {
     if (this.temporizador) clearInterval(this.temporizador);
+    window.removeEventListener('focus', this.alEnfocar);
   }
 
-  private refrescar(): void {
+  private refrescar(conSesion = false): void {
     if (!this.auth.autenticado()) {
       this.noLeidas.set(0);
       return;
     }
+    // Al arrancar la sesion ya se acaba de validar (app.config.ts); despues,
+    // se relee para reflejar cambios de rol sin recargar la pagina.
+    if (conSesion) this.auth.refrescarSesion();
     this.api.noLeidas().subscribe({ next: (r) => this.noLeidas.set(r.noLeidas), error: () => undefined });
   }
 
   etiquetaPapel(): string {
+    if (this.auth.esSuperusuario()) return 'Superusuario';
     if (this.auth.esAdministrador()) return 'Administrador';
     if (this.auth.tieneRol('AUXILIAR_LIS')) return 'Auxiliar LIS';
     return this.auth.sesion()?.perfil === 'ESTUDIANTE' ? 'Estudiante' : 'Donador';

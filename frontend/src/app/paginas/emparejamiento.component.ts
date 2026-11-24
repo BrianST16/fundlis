@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { LoteFisico, OfertaCatalogo, ResultadoEmparejamiento } from '../core/modelos';
 import { mensajeError } from '../core/utilidades';
@@ -26,11 +27,21 @@ import { mensajeError } from '../core/utilidades';
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
 
-    <div class="tarjeta">
+    @if (reasignando(); as ra) {
+      <div class="aviso info">
+        <strong>Reasignando el producto de la asignacion #{{ ra.asignacionId }}</strong> (lote #{{ ra.loteId }},
+        ya esta EN_CUSTODIA en el LIS). Al confirmar: el producto pasa directo a custodia de la nueva
+        peticion <strong>sin repetir la recepcion</strong>, la peticion original se cierra por
+        incumplimiento, queda todo en el historial y se avisa al donador y a los dos estudiantes.
+        <button class="secundario pequeno" style="margin-left:.5rem" (click)="salirDeReasignacion()">Cancelar reasignacion</button>
+      </div>
+    }
+
+    <div class="tarjeta" [hidden]="!!reasignando()">
       <div class="fila">
         <button class="pequeno" [class.secundario]="modo() !== 'OFERTA'" (click)="cambiarModo('OFERTA')">Desde una donacion</button>
         <button class="pequeno" [class.secundario]="modo() !== 'LOTE'" (click)="cambiarModo('LOTE')">
-          Lotes en el LIS sin destino ({{ lotes().length }})
+          Lotes en el LIS disponibles ({{ lotes().length }})
         </button>
       </div>
       @if (modo() === 'OFERTA') {
@@ -42,11 +53,13 @@ import { mensajeError } from '../core/utilidades';
           }
         </select>
       } @else {
-        <label>Lote fisico sin destino (ya esta en el LIS)</label>
+        <label>Lote fisico ya en el LIS (sin destino o en custodia temporal LOCAL): pasa directo a custodia, sin nueva recepcion</label>
         <select [value]="seleccion()" (change)="elegir($any($event.target).value)">
           <option value="">Selecciona un lote</option>
           @for (l of lotes(); track l.id) {
-            <option [value]="l.id">Lote #{{ l.id }} — {{ l.producto }} ({{ l.cantidad }} u.)</option>
+            <option [value]="l.id">
+              Lote #{{ l.id }} — {{ l.producto }} ({{ l.cantidad }} u.){{ l.enCustodiaLocal ? ' · custodia LOCAL' : '' }}
+            </option>
           }
         </select>
       }
@@ -123,7 +136,7 @@ import { mensajeError } from '../core/utilidades';
         </div>
       }
 
-      <div class="tarjeta" style="border-style:dashed">
+      <div class="tarjeta" style="border-style:dashed" [hidden]="!!reasignando() || loteYaEnLocal(r)">
         <div class="fila">
           <span class="etiqueta ambar">Ultima opcion</span>
           <strong>{{ r.destinoLocal.nombre }}</strong>
@@ -146,6 +159,13 @@ import { mensajeError } from '../core/utilidades';
 })
 export class EmparejamientoComponent implements OnInit {
   private api = inject(ApiService);
+  private router = inject(Router);
+
+  /** Query params (?lote=&asignacion=) que llegan desde "Custodia y entregas"
+   *  al pulsar "Reasignar a otra peticion" (withComponentInputBinding). */
+  lote = input<string | undefined>();
+  asignacion = input<string | undefined>();
+  reasignando = signal<{ asignacionId: number; loteId: number } | null>(null);
 
   modo = signal<'OFERTA' | 'LOTE'>('OFERTA');
   ofertas = signal<OfertaCatalogo[]>([]);
@@ -161,11 +181,37 @@ export class EmparejamientoComponent implements OnInit {
 
   ngOnInit(): void {
     this.cargarListas();
+    const loteId = Number(this.lote());
+    const asignacionId = Number(this.asignacion());
+    if (loteId > 0 && asignacionId > 0) {
+      this.reasignando.set({ asignacionId, loteId });
+      this.modo.set('LOTE');
+      // El lote esta ocupado por la asignacion actual: no figura entre los
+      // "sin destino", asi que se consultan sus candidatos directamente.
+      this.elegir(String(loteId));
+    } else if (loteId > 0) {
+      // Desde "LOCAL y lotes": lote sin destino o en custodia temporal LOCAL.
+      this.modo.set('LOTE');
+      this.elegir(String(loteId));
+    }
+  }
+
+  /** El lote ya esta en custodia LOCAL: no se ofrece "destinar a LOCAL" otra vez. */
+  loteYaEnLocal(r: ResultadoEmparejamiento): boolean {
+    return r.origen === 'LOTE' && !!this.lotes().find((l) => l.id === r.loteId)?.enCustodiaLocal;
+  }
+
+  salirDeReasignacion(): void {
+    this.reasignando.set(null);
+    this.resultado.set(null);
+    this.seleccion.set('');
+    this.router.navigate([], { queryParams: {} });
   }
 
   private cargarListas(): void {
     this.api.catalogoOfertas().subscribe({ next: (o) => this.ofertas.set(o), error: (e) => this.error.set(mensajeError(e)) });
-    this.api.lotes('SIN_DESTINO').subscribe({ next: (l) => this.lotes.set(l), error: () => this.lotes.set([]) });
+    // D-50: tambien lo que esta en custodia temporal LOCAL se puede emparejar.
+    this.api.lotes('DISPONIBLES').subscribe({ next: (l) => this.lotes.set(l), error: () => this.lotes.set([]) });
   }
 
   cambiarModo(m: 'OFERTA' | 'LOTE'): void {
@@ -210,6 +256,29 @@ export class EmparejamientoComponent implements OnInit {
   }
 
   confirmar(r: ResultadoEmparejamiento, peticionId: number): void {
+    const ra = this.reasignando();
+    if (ra) {
+      const motivo = prompt(
+        `Motivo de la reasignacion de la asignacion #${ra.asignacionId} (minimo 5 caracteres).\n` +
+          'La peticion original se cerrara por incumplimiento.',
+      );
+      if (!motivo || motivo.trim().length < 5) return;
+      this.ocupado.set(true);
+      this.error.set(null);
+      this.api.reasignarAsignacion(ra.asignacionId, peticionId, motivo.trim()).subscribe({
+        next: (a) => {
+          this.reasignando.set(null);
+          this.router.navigate([], { queryParams: {} });
+          this.terminar(
+            `Reasignado sin nueva recepcion: asignacion #${a.id} EN_CUSTODIA para la peticion #${peticionId}. ` +
+              'Se aviso al donador y a los estudiantes.',
+            r,
+          );
+        },
+        error: (e) => { this.error.set(mensajeError(e, 'No se pudo reasignar.')); this.ocupado.set(false); },
+      });
+      return;
+    }
     this.ocupado.set(true);
     this.error.set(null);
     if (r.origen === 'LOTE' && r.loteId) {

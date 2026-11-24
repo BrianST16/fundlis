@@ -21,9 +21,10 @@ import { mensajeError } from '../core/utilidades';
   template: `
     <h1>Analitica</h1>
     <p class="subtitulo">
-      Reputacion = 0.85 &times; cumplimiento + 0.15 &times; actividad (pesos configurables, propuesta
-      P-11). Cumplimiento = (exitos + 1) / (exitos + fallos + 2). El ranking no altera la prioridad
-      socioeconomica del emparejamiento.
+      Estudiantes: reputacion = 0.85 &times; cumplimiento + 0.15 &times; actividad (pesos configurables,
+      propuesta P-11), con cumplimiento = (exitos + 1) / (exitos + fallos + 2). Donadores: indicador
+      directo de cumplimiento (D-40). Los rankings no alteran la prioridad socioeconomica del
+      emparejamiento.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
@@ -47,8 +48,9 @@ import { mensajeError } from '../core/utilidades';
     @if (alertas(); as a) {
       <h2>Alertas de incumplimiento</h2>
       <p class="dato">
-        Se alerta con {{ a.regla.umbralFallos }} o mas fallos, o con reputacion menor a
-        {{ a.regla.umbralReputacion }} cuando hay historial. Es informativo: no bloquea a nadie.
+        Se alerta con {{ a.regla.umbralFallos }} o mas fallos, o con reputacion (estudiantes) o
+        cumplimiento (donadores) menor a {{ pct(a.regla.umbralReputacion) }} cuando hay historial.
+        Es informativo: no bloquea a nadie.
       </p>
       @if (!a.estudiantes.length && !a.donadores.length) { <p class="vacio">Sin alertas.</p> }
       @for (x of a.estudiantes; track x.usuarioId) {
@@ -74,13 +76,27 @@ import { mensajeError } from '../core/utilidades';
     </table>
 
     <h2>Ranking de donadores</h2>
+    <p class="dato">
+      Cumplimiento = donaciones completadas / (completadas + fallidas). Completada: el producto llego
+      completo al LIS. Las pendientes no cuentan hasta cerrarse.
+      @if (donadores().length) {
+        &#9733; Recurrente: {{ donadores()[0].umbralRecurrente }} o mas donaciones completadas.
+      }
+    </p>
     <table>
-      <thead><tr><th>#</th><th>Donador</th><th>Compromisos</th><th>Completadas</th><th>Fallidas</th><th>Cumplimiento</th><th>Reputacion</th></tr></thead>
+      <thead><tr><th>#</th><th>Donador</th><th>Compromisos</th><th>Completadas</th><th>Fallidas</th><th>Pendientes</th><th>Cumplimiento</th></tr></thead>
       <tbody>
         @for (f of donadores(); track f.usuarioId) {
-          <tr><td>{{ f.posicion }}</td><td>{{ f.nombre }}<br /><span class="dato">{{ f.email }}</span></td>
-            <td>{{ f.compromisos }}</td><td>{{ f.completadas }}</td><td>{{ f.fallidas }}</td>
-            <td>{{ f.cumplimiento | number: '1.3-3' }}</td><td><strong>{{ f.reputacion | number: '1.3-3' }}</strong></td></tr>
+          <tr><td>{{ f.posicion }}</td>
+            <td>
+              {{ f.nombre }}
+              @if (f.recurrente) { <span class="etiqueta" title="{{ f.umbralRecurrente }} o mas donaciones completadas">&#9733; Recurrente</span> }
+              <br /><span class="dato">{{ f.email }}</span>
+            </td>
+            <td>{{ f.compromisos }}</td><td>{{ f.completadas }}</td><td>{{ f.fallidas }}</td><td>{{ f.pendientes }}</td>
+            <td><strong>{{ pct(f.tasaCumplimiento) }}</strong>
+              @if (f.tasaCumplimiento === null) { <br /><span class="dato">sin donaciones cerradas</span> }
+            </td></tr>
         } @empty { <tr><td colspan="7" class="vacio">Sin datos.</td></tr> }
       </tbody>
     </table>

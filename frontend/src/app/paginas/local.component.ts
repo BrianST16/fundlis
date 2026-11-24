@@ -1,34 +1,41 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
+import { TrazabilidadComponent } from '../compartido/trazabilidad.component';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { DestinoLocal, FotoEnviable, LoteFisico } from '../core/modelos';
+import { DestinoLocal, EstadoLocal, FotoEnviable, LoteFisico } from '../core/modelos';
 import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
 
 /**
- * LOCAL (D-43): el LIS como destino institucional. Custodia TEMPORAL la
- * gestiona el auxiliar; la ACEPTACION como donativo la autoriza SOLO el
- * administrador. Tambien muestra la ubicacion fisica actual (lotes).
+ * LOCAL (D-43, D-50): el LIS como destino institucional.
+ *  - Custodia temporal: la gestiona el auxiliar. Lo que esta en custodia se
+ *    puede EMPAREJAR directo con un estudiante (sin nueva recepcion).
+ *  - Quedarse el producto para el LIS: SOLO el administrador lo PROPONE y el
+ *    DONADOR acepta o rechaza. Si rechaza, se le devuelve (con foto).
  */
 @Component({
   selector: 'lis-local',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, TrazabilidadComponent],
   template: `
     <h1>LOCAL y lotes fisicos</h1>
     <p class="subtitulo">
-      LOCAL no es un usuario ni una peticion: es el LIS como destino institucional. La custodia
-      temporal la gestiona el auxiliar; la aceptacion como donativo del LIS solo la autoriza el
-      administrador.
+      LOCAL no es un usuario ni una peticion: es el LIS como destino institucional. Lo que esta en
+      custodia temporal se puede emparejar con un estudiante. Para que un producto quede para el
+      LIS, el administrador lo propone y el donador decide.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
 
+    @if (trazaOferta(); as id) {
+      <lis-trazabilidad [ofertaId]="id" (cerrar)="trazaOferta.set(null)" />
+    }
+
     @if (activo(); as d) {
       <div class="tarjeta">
-        <strong>{{ accion() === 'recepcion' ? 'Recepcion' : 'Devolucion' }} — LOCAL #{{ d.id }} ({{ d.cantidad }} u.)</strong>
+        <strong>{{ accion() === 'recepcion' ? 'Recepcion' : 'Devolucion al donador' }} — LOCAL #{{ d.id }} ({{ d.cantidad }} u.)</strong>
         <label>Nombre de quien {{ accion() === 'recepcion' ? 'entrega' : 'recibe' }}</label>
         <input [value]="contraparte()" (input)="contraparte.set($any($event.target).value)" />
         <label>Fotografia (obligatoria)</label>
@@ -41,32 +48,62 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
     }
 
     <h2>Destinos LOCAL abiertos</h2>
-    @if (!abiertos().length) { <p class="vacio">No hay destinos LOCAL en espera ni en custodia.</p> }
+    @if (!abiertos().length) { <p class="vacio">No hay destinos LOCAL abiertos.</p> }
     @for (d of abiertos(); track d.id) {
       <div class="tarjeta">
         <div class="fila">
-          <span class="etiqueta" [class.ambar]="d.estado === 'ESPERA_RECEPCION'">{{ d.estado }}</span>
+          <span class="etiqueta"
+                [class.ambar]="d.estado === 'ESPERA_RECEPCION' || d.estado === 'PROPUESTO_DONADOR'"
+                [class.roja]="d.estado === 'POR_DEVOLVER'">{{ legible(d.estado) }}</span>
           <strong>LOCAL #{{ d.id }} — {{ d.producto }}</strong>
           <span class="etiqueta gris">{{ d.cantidad }} u.</span>
-          @if (d.aceptacionSolicitada) { <span class="etiqueta ambar">aceptacion solicitada</span> }
+          @if (auth.esAdministrador()) {
+            <button class="secundario pequeno" style="margin-left:auto" (click)="trazaOferta.set(d.ofertaId)">Trazabilidad</button>
+          }
         </div>
-        <p class="dato">Motivo: {{ d.motivo }} &middot; elegido {{ f(d.seleccionadoEn) }}
+        <p class="dato">Motivo de custodia: {{ d.motivo }} &middot; elegido {{ f(d.seleccionadoEn) }}
           @if (d.custodiaDesde) { &middot; custodia desde {{ f(d.custodiaDesde) }} }
           @if (d.loteId) { &middot; lote #{{ d.loteId }} }</p>
+
+        @if (d.donador; as dn) {
+          <p class="dato">
+            Donador: <strong>{{ dn.nombre }}</strong> &middot;
+            <a [href]="'mailto:' + dn.email">{{ dn.email }}</a>
+          </p>
+        }
+
+        @if (d.estado === 'PROPUESTO_DONADOR') {
+          <div class="aviso info" style="margin:.5rem 0">
+            Propuesta enviada al donador: <em>{{ d.propuestaMotivo }}</em>.
+            Debe responder antes del <strong>{{ d.propuestaLimite }}</strong> (dias habiles).
+            Mientras tanto no se puede emparejar.
+          </div>
+        }
+        @if (d.estado === 'POR_DEVOLVER') {
+          <div class="aviso error" style="margin:.5rem 0">
+            El donador rechazo que quede para el LIS
+            @if (d.respuestaMotivo) { (“{{ d.respuestaMotivo }}”) }.
+            Contactalo y registra la devolucion con foto.
+          </div>
+        }
+
         <div class="fila">
           @if (d.estado === 'ESPERA_RECEPCION') {
             <button class="pequeno" (click)="abrir(d, 'recepcion')">Registrar recepcion</button>
             <button class="peligro pequeno" (click)="cancelar(d)">Cancelar</button>
           }
           @if (d.estado === 'CUSTODIA_TEMPORAL') {
-            @if (!d.aceptacionSolicitada) {
-              <button class="secundario pequeno" (click)="solicitar(d)">Solicitar aceptacion institucional</button>
-            }
+            <button class="pequeno" (click)="emparejar(d.loteId)">Emparejar con un estudiante</button>
             @if (auth.esAdministrador()) {
-              <button class="pequeno" (click)="aceptar(d)">Aceptar como donativo del LIS (administrador)</button>
+              <button class="secundario pequeno" (click)="proponer(d)">Proponer al donador que quede para el LIS</button>
             }
-            <button class="secundario pequeno" (click)="reasignar(d)">Reasignar a una peticion</button>
             <button class="secundario pequeno" (click)="abrir(d, 'devolucion')">Devolver al donador</button>
+          }
+          @if (d.estado === 'PROPUESTO_DONADOR' && auth.esAdministrador()) {
+            <button class="secundario pequeno" (click)="retirar(d)">Retirar propuesta</button>
+          }
+          @if (d.estado === 'POR_DEVOLVER') {
+            <button class="pequeno" (click)="abrir(d, 'devolucion')">Registrar devolucion (foto)</button>
           }
         </div>
       </div>
@@ -85,8 +122,10 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
               @else { <span class="etiqueta roja">sin destino</span> }
             </td>
             <td>
+              @if (l.sinDestino || l.enCustodiaLocal) {
+                <button class="secundario pequeno" (click)="emparejar(l.id)">Emparejar</button>
+              }
               @if (l.sinDestino) {
-                <a routerLink="/lis/emparejamiento">Reasignar</a> ·
                 <button class="secundario pequeno" (click)="custodiaLote(l)">Custodia LOCAL</button>
               }
             </td>
@@ -100,7 +139,7 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
       <thead><tr><th>#</th><th>Producto</th><th>Estado</th><th>Cierre</th></tr></thead>
       <tbody>
         @for (d of cerrados(); track d.id) {
-          <tr><td>{{ d.id }}</td><td>{{ d.producto }} ({{ d.cantidad }} u.)</td><td>{{ d.estado }}</td>
+          <tr><td>{{ d.id }}</td><td>{{ d.producto }} ({{ d.cantidad }} u.)</td><td>{{ legible(d.estado) }}</td>
             <td>{{ d.motivoCierre }} @if (d.aceptadoEn) { — aceptado {{ f(d.aceptadoEn) }} }</td></tr>
         } @empty { <tr><td colspan="4" class="vacio">Sin historial.</td></tr> }
       </tbody>
@@ -109,7 +148,11 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
 })
 export class LocalComponent implements OnInit {
   private api = inject(ApiService);
+  private router = inject(Router);
   auth = inject(AuthService);
+
+  /** D-52: trazabilidad (solo administrador). */
+  trazaOferta = signal<number | null>(null);
 
   abiertos = signal<DestinoLocal[]>([]);
   cerrados = signal<DestinoLocal[]>([]);
@@ -128,9 +171,23 @@ export class LocalComponent implements OnInit {
 
   private cargar(): void {
     const fallo = (e: unknown) => this.error.set(mensajeError(e));
-    this.api.destinosLocal('ESPERA_RECEPCION,CUSTODIA_TEMPORAL').subscribe({ next: (x) => this.abiertos.set(x), error: fallo });
+    this.api.destinosLocal('ESPERA_RECEPCION,CUSTODIA_TEMPORAL,PROPUESTO_DONADOR,POR_DEVOLVER').subscribe({ next: (x) => this.abiertos.set(x), error: fallo });
     this.api.destinosLocal('ACEPTADO,REASIGNADO,DEVUELTO,CANCELADO').subscribe({ next: (x) => this.cerrados.set(x), error: fallo });
     this.api.lotes('EN_LIS').subscribe({ next: (x) => this.lotes.set(x), error: fallo });
+  }
+
+  legible(e: EstadoLocal): string {
+    const mapa: Record<EstadoLocal, string> = {
+      ESPERA_RECEPCION: 'Espera recepcion',
+      CUSTODIA_TEMPORAL: 'Custodia temporal',
+      PROPUESTO_DONADOR: 'Esperando respuesta del donador',
+      POR_DEVOLVER: 'Por devolver al donador',
+      ACEPTADO: 'Aceptado por el LIS',
+      REASIGNADO: 'Emparejado con un estudiante',
+      DEVUELTO: 'Devuelto',
+      CANCELADO: 'Cancelado',
+    };
+    return mapa[e] ?? e;
   }
 
   private ok(texto: string): void {
@@ -166,7 +223,7 @@ export class LocalComponent implements OnInit {
     const datos = { cantidad: d.cantidad, nombreContraparte: this.contraparte().trim(), foto: this.foto()! };
     const llamada = this.accion() === 'recepcion' ? this.api.localRecibir(d.id, datos) : this.api.localDevolver(d.id, datos);
     llamada.subscribe({
-      next: (r) => this.ok(`LOCAL #${r.id} ahora esta en ${r.estado}.`),
+      next: (r) => this.ok(`LOCAL #${r.id}: ${this.legible(r.estado)}.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
@@ -177,23 +234,28 @@ export class LocalComponent implements OnInit {
     this.api.localCancelar(d.id, m).subscribe({ next: () => this.ok(`LOCAL #${d.id} cancelado: las unidades vuelven a la oferta.`), error: (e) => this.error.set(mensajeError(e)) });
   }
 
-  solicitar(d: DestinoLocal): void {
-    const m = this.motivo('Por que proponer aceptarlo como donativo del LIS?');
-    if (!m) return;
-    this.api.localSolicitarAceptacion(d.id, m).subscribe({ next: () => this.ok('Solicitud enviada a los administradores.'), error: (e) => this.error.set(mensajeError(e)) });
+  /** D-50: abre Emparejamiento (KD-tree + prioridad) para ese lote. */
+  emparejar(loteId: number | null): void {
+    if (!loteId) return;
+    this.router.navigate(['/lis/emparejamiento'], { queryParams: { lote: loteId } });
   }
 
-  aceptar(d: DestinoLocal): void {
-    const m = this.motivo('Motivo de la aceptacion institucional:');
+  proponer(d: DestinoLocal): void {
+    const m = this.motivo(
+      'Motivo para que el producto quede para el LIS (el donador lo vera y decidira si acepta). Minimo 5 caracteres:',
+    );
     if (!m) return;
-    this.api.localAceptar(d.id, m).subscribe({ next: () => this.ok(`LOCAL #${d.id} aceptado como patrimonio del LIS.`), error: (e) => this.error.set(mensajeError(e)) });
+    this.api.localProponer(d.id, m).subscribe({
+      next: (r) => this.ok(`Propuesta enviada al donador (bandeja y correo). Debe responder antes del ${r.propuestaLimite}.`),
+      error: (e) => this.error.set(mensajeError(e)),
+    });
   }
 
-  reasignar(d: DestinoLocal): void {
-    const id = prompt('Numero de la peticion compatible a la que se reasigna (ver Emparejamiento):');
-    if (!id || !Number(id)) return;
-    this.api.localReasignar(d.id, Number(id)).subscribe({
-      next: (r) => this.ok(`Reasignado: asignacion #${r.asignacionId} EN_CUSTODIA, sin nueva recepcion.`),
+  retirar(d: DestinoLocal): void {
+    const m = this.motivo('Motivo para retirar la propuesta (minimo 5 caracteres):');
+    if (!m) return;
+    this.api.localRetirarPropuesta(d.id, m).subscribe({
+      next: () => this.ok(`Propuesta retirada: LOCAL #${d.id} vuelve a custodia temporal.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }

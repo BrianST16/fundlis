@@ -105,6 +105,7 @@ button.pequeno { padding: .35rem .7rem; font-size: .85rem; }
 table { width: 100%; border-collapse: collapse; background: #fff; font-size: .9rem; }
 th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--borde); }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: var(--suave); }
+tr.seleccionada td { background: var(--verde-claro); }
 
 .dato { font-size: .85rem; color: var(--suave); }
 .dato strong { color: var(--texto); }
@@ -112,3 +113,68 @@ th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color:
 .barra-puntaje { height: 6px; background: #eceff1; border-radius: 3px; overflow: hidden; }
 .barra-puntaje span { display: block; height: 100%; background: var(--verde); }
 img.foto { width: 100%; max-height: 170px; object-fit: cover; border-radius: 7px; margin-bottom: .6rem; }
+lis-foto { display: block; }
+img.foto.ampliable { cursor: zoom-in; transition: opacity .15s; }
+img.foto.ampliable:hover { opacity: .9; }
+.foto-vacia {
+  height: 120px; margin-bottom: .6rem; border-radius: 7px; background: var(--gris);
+  display: flex; align-items: center; justify-content: center; color: var(--suave); font-size: .85rem;
+}
+
+/* Visor de imagen a pantalla completa (componente lis-foto). */
+.visor-foto {
+  position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, .88);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 1rem; cursor: zoom-out;
+}
+.visor-foto img {
+  max-width: 96vw; max-height: 88vh; object-fit: contain; border-radius: 6px; cursor: default;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, .5);
+}
+.visor-pie { color: #fff; margin: .75rem 0 0; font-size: .95rem; text-align: center; }
+.visor-cerrar {
+  position: absolute; top: .75rem; right: 1rem; background: transparent; border: none;
+  color: #fff; font-size: 2.4rem; line-height: 1; cursor: pointer; padding: .25rem .6rem;
+}
+.visor-cerrar:hover { color: #ddd; }
+.visor-cerrar.oscuro { position: static; color: var(--suave); font-size: 1.8rem; padding: 0 .3rem; }
+.visor-cerrar.oscuro:hover { color: var(--texto); }
+
+/* Panel modal (trazabilidad, D-52). Debajo del visor de fotos. */
+.modal-fondo {
+  position: fixed; inset: 0; z-index: 900; background: rgba(0, 0, 0, .45);
+  display: flex; justify-content: center; align-items: flex-start; padding: 4vh 1rem;
+}
+.modal-panel {
+  background: #fff; border-radius: 10px; width: min(760px, 100%); max-height: 92vh; overflow: auto;
+  padding: 1rem 1.2rem; box-shadow: 0 10px 40px rgba(0, 0, 0, .25);
+}
+.modal-cabecera {
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  position: sticky; top: -1rem; background: #fff; padding: .25rem 0 .5rem; margin-bottom: .3rem;
+  border-bottom: 1px solid var(--borde);
+}
+
+/* Linea de tiempo compacta: una fila por evento, detalle al expandir. */
+.linea-tiempo { list-style: none; margin: 0; padding: 0 0 0 .9rem; border-left: 2px solid var(--borde); }
+.evento { position: relative; margin: 0 0 .15rem; }
+.evento::before {
+  content: ''; position: absolute; left: -1.27rem; top: .75rem; width: .6rem; height: .6rem;
+  border-radius: 50%; background: var(--borde); border: 2px solid #fff;
+}
+.evento.mov::before { background: var(--verde); }
+.evento-fila {
+  display: grid; grid-template-columns: 8.5rem 1fr; gap: 0 .6rem; width: 100%; text-align: left;
+  background: transparent; color: var(--texto); border: none; border-radius: 6px; padding: .35rem .4rem; cursor: pointer;
+}
+.evento-fila:hover { background: var(--gris); }
+.evento-fecha { grid-row: span 2; font-size: .78rem; color: var(--suave); padding-top: .1rem; }
+.evento-titulo { font-weight: 600; font-size: .9rem; }
+.evento-meta { font-size: .78rem; color: var(--suave); }
+.evento-detalle { margin: 0 0 .5rem 9.1rem; padding: .5rem .7rem; background: var(--gris); border-radius: 6px; font-size: .88rem; }
+.evento-foto { max-width: 260px; margin-top: .3rem; }
+@media (max-width: 600px) {
+  .evento-fila { grid-template-columns: 1fr; }
+  .evento-fecha { grid-row: auto; }
+  .evento-detalle { margin-left: 0; }
+}

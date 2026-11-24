@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { DecisionTarea, EstadoPlazo, ItemBandejaPlazos, ResumenPlazos, TareaDefinirEstado } from '../core/modelos';
 import { mensajeError } from '../core/utilidades';
 
@@ -116,6 +117,7 @@ import { mensajeError } from '../core/utilidades';
 })
 export class VencimientosComponent implements OnInit {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
 
   items = signal<ItemBandejaPlazos[]>([]);
   resumen = signal<ResumenPlazos | null>(null);
@@ -164,6 +166,16 @@ export class VencimientosComponent implements OnInit {
         { codigo: 'CUSTODIA_LOCAL', texto: 'Custodia LOCAL' },
         { codigo: 'DEVOLUCION', texto: 'Iniciar devolucion' },
         { codigo: 'CANCELAR_INTENTO', texto: 'Cancelar intento' },
+      ];
+    }
+    if (t.destinoLocalId && t.clave.startsWith('PROPUESTA:')) {
+      // D-50: el donador no respondio. Nunca se acepta sin su consentimiento.
+      return [
+        { codigo: 'SIN_ACCION', texto: 'Seguir esperando (contactado)' },
+        ...(this.auth.esAdministrador()
+          ? [{ codigo: 'RETIRAR_PROPUESTA' as DecisionTarea, texto: 'Retirar propuesta (vuelve a custodia)' }]
+          : []),
+        { codigo: 'DEVOLUCION', texto: 'Pasar a devolucion al donador' },
       ];
     }
     if (t.destinoLocalId && t.responsable === 'DONADOR') {

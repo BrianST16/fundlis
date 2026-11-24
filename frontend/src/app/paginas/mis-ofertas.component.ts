@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { FotoComponent } from '../compartido/foto.component';
 import { ApiService } from '../core/api.service';
-import { Categoria, ESTADOS_CONSERVACION, FotoEnviable, OfertaCatalogo } from '../core/modelos';
+import { Categoria, ESTADOS_CONSERVACION, FotoEnviable, OfertaCatalogo, PropuestaLocal } from '../core/modelos';
 import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
 
 @Component({
   selector: 'lis-mis-ofertas',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FotoComponent],
   template: `
     <h1>Mis donaciones</h1>
     <p class="subtitulo">
@@ -17,6 +18,29 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
+
+    @if (propuestasPendientes().length) {
+      <h2>El LIS quiere quedarse con tu donacion ({{ propuestasPendientes().length }})</h2>
+      @for (p of propuestasPendientes(); track p.id) {
+        <div class="tarjeta" style="border-color:var(--ambar)">
+          @if (p.fotoId) { <lis-foto [evidenciaId]="p.fotoId" [alt]="p.producto" /> }
+          <strong>{{ p.producto }}</strong> <span class="etiqueta gris">{{ p.cantidad }} u.</span>
+          <p style="margin:.5rem 0">
+            Tu donacion esta bajo custodia del LIS. El administrador propone que quede como donativo
+            para el laboratorio. <strong>Motivo:</strong> {{ p.motivo }}
+          </p>
+          <p class="dato">
+            Responde antes del <strong>{{ p.limite }}</strong> (dias habiles). Si rechazas, el LIS se
+            comunicara contigo para devolverte el producto. Sin tu respuesta, el producto
+            <strong>no</strong> queda para el LIS.
+          </p>
+          <div class="fila" style="margin-top:.5rem">
+            <button class="pequeno" [disabled]="respondiendo()" (click)="responder(p, true)">Acepto que quede para el LIS</button>
+            <button class="peligro pequeno" [disabled]="respondiendo()" (click)="responder(p, false)">No, prefiero que me la devuelvan</button>
+          </div>
+        </div>
+      }
+    }
 
     <div class="tarjeta">
       <strong>Nueva donacion</strong>
@@ -81,7 +105,7 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
       @for (o of ofertas(); track o.id) {
         <div class="tarjeta">
           @if (o.fotoId) {
-            <img class="foto" [src]="api.urlFoto(o.fotoId)" [alt]="o.nombreProducto" />
+            <lis-foto [evidenciaId]="o.fotoId" [alt]="o.nombreProducto" />
           }
           <div class="fila">
             <span
@@ -151,6 +175,46 @@ export class MisOfertasComponent implements OnInit {
     this.api.misOfertas().subscribe({
       next: (o) => this.ofertas.set(o),
       error: (e) => this.error.set(mensajeError(e)),
+    });
+    this.api.misPropuestasLocal().subscribe({
+      next: (p) => this.propuestas.set(p),
+      error: () => this.propuestas.set([]),
+    });
+  }
+
+  // --- D-50 / correccion 8: el donador decide si su donacion queda para el LIS ---
+  propuestas = signal<PropuestaLocal[]>([]);
+  respondiendo = signal(false);
+
+  propuestasPendientes(): PropuestaLocal[] {
+    return this.propuestas().filter((p) => p.estado === 'PROPUESTO_DONADOR');
+  }
+
+  responder(p: PropuestaLocal, acepta: boolean): void {
+    let motivo: string | undefined;
+    if (acepta) {
+      if (!confirm(`Confirmas que "${p.producto}" quede como donativo del LIS?`)) return;
+    } else {
+      const m = prompt('Opcional: cuentanos por que prefieres que te la devuelvan.');
+      if (m === null) return; // cancelo el dialogo
+      motivo = m.trim() || undefined;
+    }
+    this.respondiendo.set(true);
+    this.api.responderPropuestaLocal(p.id, acepta, motivo).subscribe({
+      next: () => {
+        this.mensaje.set(
+          acepta
+            ? `Gracias: "${p.producto}" queda como donativo del LIS.`
+            : `Registramos tu respuesta. El LIS se comunicara contigo para devolverte "${p.producto}".`,
+        );
+        this.error.set(null);
+        this.respondiendo.set(false);
+        this.cargar();
+      },
+      error: (e) => {
+        this.error.set(mensajeError(e));
+        this.respondiendo.set(false);
+      },
     });
   }
 

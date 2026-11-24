@@ -28,6 +28,13 @@ import { fecha, mensajeError } from '../core/utilidades';
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
 
+    @if (caracterizada() === false) {
+      <div class="aviso error">
+        La caracterizacion es obligatoria para registrar peticiones: de ella sale tu prioridad.
+        <a routerLink="/caracterizacion">Completar mi caracterizacion</a>
+      </div>
+    }
+
     <div class="tarjeta">
       <strong>Nueva peticion</strong>
       <label>Categoria</label>
@@ -102,9 +109,15 @@ export class MisPeticionesComponent implements OnInit {
   mensaje = signal<string | null>(null);
   enviando = signal(false);
   f = fecha;
+  /** null = aun no se sabe; el backend tambien lo exige (peticiones.service). */
+  caracterizada = signal<boolean | null>(null);
 
   ngOnInit(): void {
     this.api.categorias().subscribe({ next: (c) => this.categorias.set(c) });
+    this.api.miCaracterizacion().subscribe({
+      next: (c) => this.caracterizada.set(!!c),
+      error: () => this.caracterizada.set(null),
+    });
     this.cargar();
   }
 
@@ -118,7 +131,8 @@ export class MisPeticionesComponent implements OnInit {
 
   puedeCrear(): boolean {
     const c = this.cupo();
-    return !!this.categoriaId() && this.descripcion().trim().length >= 10 &&
+    return this.caracterizada() !== false &&
+      !!this.categoriaId() && this.descripcion().trim().length >= 10 &&
       (!c || c.usadas < c.maximo);
   }
 

@@ -7,8 +7,11 @@ import {
   AsignacionResumen,
   Candidato,
   Categoria,
+  CertificadoMeta,
   DecisionTarea,
   DestinoLocal,
+  PropuestaLocal,
+  Trazabilidad,
   EstadoPlazo,
   LoteFisico,
   NotificacionBandeja,
@@ -61,8 +64,11 @@ export class ApiService {
     return this.http.get<PeticionVista[]>(`${this.base}/peticiones/catalogo`, { params });
   }
 
-  urlFoto(evidenciaId: number): string {
-    return `${this.base}/evidencias/${evidenciaId}`;
+  /** Binario de una foto, CON token (lo adjunta el interceptor). Usar via
+   *  <lis-foto>: un <img src> directo no envia el token y falla para las
+   *  ofertas que aun no estan aprobadas. */
+  fotoBlob(evidenciaId: number): Observable<Blob> {
+    return this.http.get(`${this.base}/evidencias/${evidenciaId}`, { responseType: 'blob' });
   }
 
   // --- evidencias ---
@@ -120,6 +126,45 @@ export class ApiService {
     return this.http.put(`${this.base}/caracterizacion/mia`, datos);
   }
 
+  // --- certificado de estudio (D-46) ---
+  miCertificado(): Observable<CertificadoMeta | null> {
+    return this.http.get<CertificadoMeta | null>(`${this.base}/caracterizacion/mia/certificado`);
+  }
+
+  subirCertificado(archivo: FotoEnviable): Observable<CertificadoMeta> {
+    return this.http.put<CertificadoMeta>(`${this.base}/caracterizacion/mia/certificado`, archivo);
+  }
+
+  eliminarCertificado(): Observable<void> {
+    return this.http.delete<void>(`${this.base}/caracterizacion/mia/certificado`);
+  }
+
+  /** El binario va por HttpClient (con el token), nunca como URL directa. */
+  archivoMiCertificado(): Observable<Blob> {
+    return this.http.get(`${this.base}/caracterizacion/mia/certificado/archivo`, { responseType: 'blob' });
+  }
+
+  certificadoDe(usuarioId: number): Observable<CertificadoMeta | null> {
+    return this.http.get<CertificadoMeta | null>(`${this.base}/caracterizacion/usuario/${usuarioId}/certificado`);
+  }
+
+  archivoCertificadoDe(usuarioId: number): Observable<Blob> {
+    return this.http.get(`${this.base}/caracterizacion/usuario/${usuarioId}/certificado/archivo`, {
+      responseType: 'blob',
+    });
+  }
+
+  revisarCertificado(
+    usuarioId: number,
+    estado: 'VALIDADO' | 'RECHAZADO',
+    observacion?: string,
+  ): Observable<CertificadoMeta> {
+    return this.http.patch<CertificadoMeta>(
+      `${this.base}/caracterizacion/usuario/${usuarioId}/certificado/revision`,
+      { estado, observacion },
+    );
+  }
+
   // --- peticiones (estudiante) ---
   misPeticiones(): Observable<PeticionVista[]> {
     return this.http.get<PeticionVista[]>(`${this.base}/peticiones/mias`);
@@ -171,8 +216,18 @@ export class ApiService {
     return this.http.post(`${this.base}/asignaciones/desde-lote`, { loteId, peticionId });
   }
 
+  /** D-52: linea de tiempo completa de una donacion (solo administrador). */
+  trazabilidad(ofertaId: number): Observable<Trazabilidad> {
+    return this.http.get<Trazabilidad>(`${this.base}/trazabilidad/oferta/${ofertaId}`);
+  }
+
+  /** Correccion 6: producto EN_CUSTODIA -> otra peticion, sin repetir la recepcion. */
+  reasignarAsignacion(id: number, peticionId: number, motivo: string): Observable<any> {
+    return this.http.post(`${this.base}/asignaciones/${id}/reasignar`, { peticionId, motivo });
+  }
+
   // --- LOCAL y lotes fisicos ---
-  lotes(filtro: 'SIN_DESTINO' | 'EN_LIS' | 'TODOS' = 'EN_LIS'): Observable<LoteFisico[]> {
+  lotes(filtro: 'SIN_DESTINO' | 'EN_LIS' | 'TODOS' | 'DISPONIBLES' = 'EN_LIS'): Observable<LoteFisico[]> {
     return this.http.get<LoteFisico[]>(`${this.base}/local/lotes`, { params: new HttpParams().set('filtro', filtro) });
   }
 
@@ -197,12 +252,22 @@ export class ApiService {
     return this.http.post<DestinoLocal>(`${this.base}/local/${id}/cancelar`, { motivo });
   }
 
-  localSolicitarAceptacion(id: number, motivo: string): Observable<DestinoLocal> {
-    return this.http.post<DestinoLocal>(`${this.base}/local/${id}/solicitar-aceptacion`, { motivo });
+  /** D-50: solo administrador. El donador decide si acepta. */
+  localProponer(id: number, motivo: string): Observable<DestinoLocal> {
+    return this.http.post<DestinoLocal>(`${this.base}/local/${id}/proponer`, { motivo });
   }
 
-  localAceptar(id: number, motivo: string): Observable<DestinoLocal> {
-    return this.http.post<DestinoLocal>(`${this.base}/local/${id}/aceptar`, { motivo });
+  localRetirarPropuesta(id: number, motivo: string): Observable<DestinoLocal> {
+    return this.http.post<DestinoLocal>(`${this.base}/local/${id}/retirar-propuesta`, { motivo });
+  }
+
+  /** D-50 (donador): propuestas del LIS sobre mis donaciones. */
+  misPropuestasLocal(): Observable<PropuestaLocal[]> {
+    return this.http.get<PropuestaLocal[]>(`${this.base}/local/donador/propuestas`);
+  }
+
+  responderPropuestaLocal(id: number, acepta: boolean, motivo?: string): Observable<unknown> {
+    return this.http.post(`${this.base}/local/donador/propuestas/${id}/responder`, { acepta, motivo });
   }
 
   localDevolver(id: number, datos: any): Observable<DestinoLocal> {
