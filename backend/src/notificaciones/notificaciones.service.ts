@@ -124,7 +124,7 @@ export class NotificacionesService {
           cuerpo:
             `${aviso.mensaje}\n\n` +
             'Consulta el detalle en la bandeja de la plataforma LIS Dona.\n' +
-            'Este es un mensaje automatico del Laboratorio Integrado de Sistemas (UdeA).',
+            'Este es un mensaje automático del Laboratorio Integrado de Sistemas (UdeA).',
           estado: this.correo.estadoPara ? this.correo.estadoPara(usuario.email) : this.correo.estadoInicial(),
         }),
       );
@@ -161,7 +161,7 @@ export class NotificacionesService {
   async marcarLeida(id: number, usuarioId: number) {
     const n = await this.notificaciones.findOne({ where: { id: String(id), usuarioId } });
     // Una notificacion ajena responde igual que una inexistente.
-    if (!n) throw new NotFoundException('La notificacion no existe.');
+    if (!n) throw new NotFoundException('La notificación no existe.');
     if (!n.leidaEn) await this.notificaciones.update({ id: n.id }, { leidaEn: new Date() });
     return { ok: true };
   }

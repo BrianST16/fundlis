@@ -132,12 +132,12 @@ export function rankearDirecto(filas: FilaDirecta[]) {
 export function explicarEstudiante(f: FilaRanking, pesos: PesosReputacion): string {
   const w = normalizarPesos(pesos);
   if (f.exitos + f.fallos === 0) {
-    return `Sin ayudas ni incumplimientos registrados: cumplimiento neutral 0.5. ${f.participaciones} peticion(es) hechas.`;
+    return `Sin ayudas ni incumplimientos registrados: cumplimiento neutral 0.5. ${f.participaciones} petición(es) hechas.`;
   }
   return (
     `${f.exitos} ayuda(s) recibida(s) y ${f.fallos} incumplimiento(s) de recogida -> cumplimiento (${f.exitos}+1)/(${f.exitos}+${f.fallos}+2) = ${f.cumplimiento}. ` +
-    `Actividad ${f.actividad} (${f.participaciones} peticiones frente al maximo de la cohorte). ` +
-    `Reputacion = ${w.cumplimiento.toFixed(2)}*${f.cumplimiento} + ${w.actividad.toFixed(2)}*${f.actividad} = ${f.reputacion}.`
+    `Actividad ${f.actividad} (${f.participaciones} peticiones frente al máximo de la cohorte). ` +
+    `Reputación = ${w.cumplimiento.toFixed(2)}*${f.cumplimiento} + ${w.actividad.toFixed(2)}*${f.actividad} = ${f.reputacion}.`
   );
 }
 

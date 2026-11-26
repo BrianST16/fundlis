@@ -6,7 +6,6 @@ import { ASIGNACION_VIGENTE, EstadoOferta, EstadoPeticion } from '../common/enum
 import { ParametrosService } from '../common/parametros.service';
 import {
   Caracterizacion,
-  Categoria,
   DestinoLocal,
   GrupoSisben,
   LoteFisico,
@@ -33,12 +32,12 @@ export const DIMENSIONES_OFERTA = ['estadoConservacion', 'medida'] as const;
 /** Fila fija al final de la lista de posibles recibidores (D-19, D-43). */
 export const FILA_LOCAL = {
   tipo: 'LOCAL' as const,
-  nombre: 'LOCAL - Laboratorio Integrado de Sistemas (destino institucional)',
+  nombre: 'Local - Laboratorio Integrado de Sistemas (destino institucional)',
   reglas: [
-    'Siempre es la ultima opcion, despues de las peticiones compatibles.',
+    'Siempre es la última opción, después de las peticiones compatibles.',
     'El auxiliar puede iniciar CUSTODIA TEMPORAL del LIS.',
     'La ACEPTACION como donativo institucional requiere autorizacion del administrador.',
-    'No es un usuario ni una peticion: no se crea ninguna peticion ficticia.',
+    'No es un usuario ni una petición: no se crea ninguna petición ficticia.',
   ],
 };
 
@@ -63,7 +62,6 @@ export class EmparejamientoService {
     @InjectRepository(OfertaXPeticion) private readonly asignaciones: Repository<OfertaXPeticion>,
     @InjectRepository(Caracterizacion) private readonly caracterizaciones: Repository<Caracterizacion>,
     @InjectRepository(GrupoSisben) private readonly sisben: Repository<GrupoSisben>,
-    @InjectRepository(Categoria) private readonly categorias: Repository<Categoria>,
     @InjectRepository(DestinoLocal) private readonly destinos: Repository<DestinoLocal>,
     @InjectRepository(LoteFisico) private readonly lotes: Repository<LoteFisico>,
     private readonly parametros: ParametrosService,
@@ -78,7 +76,7 @@ export class EmparejamientoService {
     const oferta = await this.ofertas.findOne({ where: { id: ofertaId }, relations: { categoria: true } });
     if (!oferta) throw new NotFoundException('La oferta no existe.');
     if (oferta.estado !== EstadoOferta.APROBADA) {
-      throw new BadRequestException(`Solo se emparejan ofertas aprobadas. Esta esta en ${oferta.estado}.`);
+      throw new BadRequestException(`Solo se emparejan ofertas aprobadas. Esta está en ${oferta.estado}.`);
     }
     const saldo = await saldoDeOferta(oferta, { intentos: this.asignaciones, destinos: this.destinos, lotes: this.lotes });
     if (saldo.disponible <= 0) {
@@ -92,7 +90,7 @@ export class EmparejamientoService {
   async candidatosParaLote(loteId: number, actual: UsuarioActual, limite = 20) {
     const lote = await this.lotes.findOne({ where: { id: loteId }, relations: { oferta: { categoria: true } } });
     if (!lote) throw new NotFoundException('El lote no existe.');
-    if (lote.ubicacion !== 'EN_LIS') throw new BadRequestException('El lote ya no esta en el LIS.');
+    if (lote.ubicacion !== 'EN_LIS') throw new BadRequestException('El lote ya no está en el LIS.');
     const r = await this.candidatos(lote.oferta, lote.oferta, actual, limite);
     return { origen: 'LOTE' as const, loteId: lote.id, cantidadDisponible: lote.cantidad, ...r };
   }
@@ -100,7 +98,8 @@ export class EmparejamientoService {
   private async candidatos(oferta: Oferta, atributos: AtributosOferta, actual: UsuarioActual, limite: number) {
     // 1. Igualdad de categoria (nunca distancia) + peticiones elegibles.
     const enCategoria = await this.peticiones.find({
-      where: { estado: EstadoPeticion.APROBADA, categoriaId: oferta.categoriaId },
+      // D-64 (C2): un estudiante bloqueado no recibe asignaciones nuevas.
+      where: { estado: EstadoPeticion.APROBADA, categoriaId: oferta.categoriaId, estudiante: { activo: true } },
       relations: { estudiante: true },
     });
     const vigentes = enCategoria.length
@@ -143,6 +142,9 @@ export class EmparejamientoService {
       oferta: {
         id: oferta.id,
         nombreProducto: oferta.nombreProducto,
+        // Para reconocer el producto al emparejar (solo personal LIS consulta esto).
+        descripcion: oferta.descripcion ?? null,
+        fotoId: oferta.fotoId ?? null,
         categoriaId: oferta.categoriaId,
         categoria: oferta.categoria?.nombre ?? null,
         estadoConservacion: Number(atributos.estadoConservacion),
@@ -156,7 +158,7 @@ export class EmparejamientoService {
         cajaMax: caja.max,
       },
       coeficientes,
-      escalaPrioridad: 'Numero real en [0, 1]; 1 = mayor necesidad. No es un porcentaje.',
+      escalaPrioridad: 'Número real en [0, 1]; 1 = mayor necesidad. No es un porcentaje.',
       candidatos: ordenados.slice(0, limite),
       /** LOCAL siempre al final de la lista (D-19). */
       destinoLocal: FILA_LOCAL,
@@ -215,7 +217,7 @@ export class EmparejamientoService {
    */
   async prioridadDe(peticionId: number, ahora = new Date()) {
     const p = await this.peticiones.findOne({ where: { id: peticionId } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     const [fila] = await this.ordenarPorPrioridad([p], { esAdministrador: false } as UsuarioActual, ahora);
     const coef = await this.parametros.coeficientesPrioridad();
     return { prioridad: fila.prioridad, coeficientes: describirCoeficientes(coef) };
@@ -226,7 +228,7 @@ export class EmparejamientoService {
   // ------------------------------------------------------------------
   async ofertasParaPeticion(peticionId: number) {
     const p = await this.peticiones.findOne({ where: { id: peticionId }, relations: { categoria: true } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     const enCategoria = await this.ofertas.find({
       where: { estado: EstadoOferta.APROBADA, categoriaId: p.categoriaId },
     });
@@ -268,7 +270,7 @@ export class EmparejamientoService {
   verificarCompatibilidad(oferta: AtributosOferta, peticion: Peticion) {
     if (!esCompatible(oferta, peticion)) {
       throw new BadRequestException(
-        'La peticion no es compatible con el producto (estado de conservacion o medida). Revisa la busqueda de compatibilidad.',
+        'La petición no es compatible con el producto (estado de conservación o medida). Revisa la búsqueda de compatibilidad.',
       );
     }
   }

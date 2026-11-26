@@ -58,7 +58,7 @@ describe('JwtGuard (revalidacion contra la BD)', () => {
     expect(req.usuario).toBeUndefined();
   });
 
-  it('token invalido en ruta privada responde 401', async () => {
+  it('token inválido en ruta privada responde 401', async () => {
     const { guard } = crearGuard({ tokenValido: false });
     const { ctx } = contexto('Bearer abc');
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
@@ -75,9 +75,9 @@ describe('JwtGuard (revalidacion contra la BD)', () => {
     expect(req.usuario.esPersonalLis).toBe(false);
   });
 
-  it('usuario bloqueado despues de emitir el token: 401 en ruta privada', async () => {
+  it('usuario bloqueado después de emitir el token: 401 en ruta privada', async () => {
     const { guard } = crearGuard({
-      errorVigente: new ForbiddenException('La cuenta no esta disponible.'),
+      errorVigente: new ForbiddenException('La cuenta no está disponible.'),
     });
     const { ctx } = contexto('Bearer token-firmado');
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
@@ -86,7 +86,7 @@ describe('JwtGuard (revalidacion contra la BD)', () => {
   it('usuario bloqueado en ruta publica: continua como invitado, sin identidad', async () => {
     const { guard } = crearGuard({
       publico: true,
-      errorVigente: new ForbiddenException('La cuenta no esta disponible.'),
+      errorVigente: new ForbiddenException('La cuenta no está disponible.'),
     });
     const { ctx, req } = contexto('Bearer token-firmado');
     await expect(guard.canActivate(ctx)).resolves.toBe(true);

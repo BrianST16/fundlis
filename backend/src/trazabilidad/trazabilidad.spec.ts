@@ -12,7 +12,7 @@ const t = (min: number) => new Date(Date.UTC(2026, 10, 20, 15, min));
 // ---------------------------------------------------------------------------
 // D-52 / correccion 10 — trazabilidad
 // ---------------------------------------------------------------------------
-describe('D-52 TrazabilidadService: una linea de tiempo por donacion', () => {
+describe('D-52 TrazabilidadService: una línea de tiempo por donación', () => {
   function servicio(oferta: any = { id: 1, nombreProducto: 'Silla', cantidad: 2, estado: 'APROBADA', fotoId: 9, donador: { nombre: 'Don Ficticio', email: 'don@example.com' } }) {
     const historial = [
       { id: '1', entidad: EntidadHistorial.OFERTA, entidadId: 1, estadoAnterior: null, estadoNuevo: 'PENDIENTE_APROBACION', actorId: 7, motivo: 'Publicada', ocurridoEn: t(0) },
@@ -42,14 +42,14 @@ describe('D-52 TrazabilidadService: una linea de tiempo por donacion', () => {
     const recepcion = r.eventos.find((e) => e.id === 'M3')!;
     expect(recepcion).toMatchObject({
       clase: 'MOVIMIENTO', tipoMovimiento: 'RECEPCION', actor: 'Auxiliar Ficticio', contraparte: 'Persona ficticia',
-      explicacion: 'Buen estado', evidenciaId: 300, referencia: 'Asignacion #40 (peticion #5)',
+      explicacion: 'Buen estado', evidenciaId: 300, referencia: 'Asignación #40 (petición #5)',
     });
     expect(r.eventos[1]).toMatchObject({ estadoNuevo: 'APROBADA', actor: 'Auxiliar Ficticio' });
     expect(r.resumen).toMatchObject({ movimientosFisicos: 1, fotos: 2 });
     expect(r.asignaciones[0]).toMatchObject({ id: 40, estudiante: 'Est Ficticio' });
   });
 
-  it('donacion inexistente: 404', async () => {
+  it('donación inexistente: 404', async () => {
     const { s } = servicio(null);
     await expect(s.deOferta(99)).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -80,7 +80,7 @@ describe('D-51 foto de la entrega en la bandeja del donador', () => {
   }
   const usuario = (sub: number): any => ({ sub, esPersonalLis: false });
 
-  it('el donador destinatario de la notificacion SI ve la foto de la entrega', async () => {
+  it('el donador destinatario de la notificación SI ve la foto de la entrega', async () => {
     await expect(evidencias(7).puedeVer(300, usuario(7))).resolves.toBe(true);
   });
 
@@ -89,7 +89,7 @@ describe('D-51 foto de la entrega en la bandeja del donador', () => {
     await expect(evidencias(7).puedeVer(300, null)).resolves.toBe(false);
   });
 
-  it('soloBandeja: la notificacion guarda la foto y NO encola correo', async () => {
+  it('soloBandeja: la notificación guarda la foto y NO encola correo', async () => {
     const guardadas: any[] = [];
     const correos = { save: jest.fn(), create: jest.fn((x) => x) };
     const s = new NotificacionesService(

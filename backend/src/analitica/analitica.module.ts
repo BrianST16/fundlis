@@ -8,5 +8,6 @@ import { AnaliticaService } from './analitica.service';
   imports: [TypeOrmModule.forFeature([Oferta, Peticion, OfertaXPeticion, LoteFisico, DestinoLocal])],
   controllers: [AnaliticaController],
   providers: [AnaliticaService],
+  exports: [AnaliticaService],
 })
 export class AnaliticaModule {}

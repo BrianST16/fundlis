@@ -78,7 +78,7 @@ export class CertificadoService {
     const maximo = await this.parametros.maxBytesEvidencia();
     if (contenido.length > maximo) {
       throw new BadRequestException(
-        `El archivo pesa ${(contenido.length / 1024).toFixed(0)} KB y el maximo es ${(maximo / 1024).toFixed(0)} KB.`,
+        `El archivo pesa ${(contenido.length / 1024).toFixed(0)} KB y el máximo es ${(maximo / 1024).toFixed(0)} KB.`,
       );
     }
     if (!firmaCertificadoValida(contenido, datos.mime)) {
@@ -168,7 +168,7 @@ export class CertificadoService {
     if (!c) throw new NotFoundException('Ese estudiante no ha cargado certificado.');
     const nota = observacion?.trim() || null;
     if (estado === 'RECHAZADO' && (!nota || nota.length < 5)) {
-      throw new BadRequestException('Para rechazar indica el motivo (minimo 5 caracteres).');
+      throw new BadRequestException('Para rechazar indica el motivo (mínimo 5 caracteres).');
     }
 
     await this.dataSource.transaction(async (mgr) => {

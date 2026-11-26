@@ -41,17 +41,17 @@ export class GoogleService {
       carga = ticket.getPayload();
     } catch (e: any) {
       this.log.warn(`ID token rechazado: ${e?.message}`);
-      throw new UnauthorizedException('El token de Google no es valido.');
+      throw new UnauthorizedException('El token de Google no es válido.');
     }
 
     if (!carga) {
-      throw new UnauthorizedException('El token de Google no trae informacion.');
+      throw new UnauthorizedException('El token de Google no trae información.');
     }
     if (!carga.email) {
       throw new UnauthorizedException('El token de Google no incluye correo.');
     }
     if (carga.email_verified !== true) {
-      throw new UnauthorizedException('El correo de la cuenta de Google no esta verificado.');
+      throw new UnauthorizedException('El correo de la cuenta de Google no está verificado.');
     }
 
     return {

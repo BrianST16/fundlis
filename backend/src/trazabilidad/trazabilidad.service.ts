@@ -60,7 +60,7 @@ export class TrazabilidadService {
       where: { id: ofertaId },
       relations: { categoria: true, donador: true },
     });
-    if (!oferta) throw new NotFoundException('La donacion no existe.');
+    if (!oferta) throw new NotFoundException('La donación no existe.');
 
     const [intentos, lotes, destinos, derivadas] = await Promise.all([
       this.intentos.find({ where: { ofertaId }, relations: { peticion: { estudiante: true } }, order: { asignadaEn: 'ASC' } }),
@@ -104,13 +104,13 @@ export class TrazabilidadService {
     const intentoPorId = new Map(intentos.map((i) => [i.id, i]));
     const refIntento = (id: number) => {
       const i = intentoPorId.get(id);
-      return i ? `Asignacion #${id} (peticion #${i.peticionId})` : `Asignacion #${id}`;
+      return i ? `Asignación #${id} (petición #${i.peticionId})` : `Asignación #${id}`;
     };
     const refs: Record<GrupoEvento, (id: number) => string> = {
-      OFERTA: (id) => `Donacion #${id}`,
+      OFERTA: (id) => `Donación #${id}`,
       ASIGNACION: refIntento,
-      LOTE: (id) => `Lote fisico #${id}`,
-      LOCAL: (id) => `LOCAL #${id}`,
+      LOTE: (id) => `Lote físico #${id}`,
+      LOCAL: (id) => `Local #${id}`,
     };
 
     const estado = (grupo: GrupoEvento, lista: HistorialEstado[]): EventoTrazabilidad[] =>
@@ -140,7 +140,7 @@ export class TrazabilidadService {
         fecha: m.registradoEn,
         clase: 'MOVIMIENTO',
         grupo: m.ofertaXPeticionId ? 'ASIGNACION' : 'LOCAL',
-        referencia: m.ofertaXPeticionId ? refIntento(m.ofertaXPeticionId) : `LOCAL #${m.destinoLocalId}`,
+        referencia: m.ofertaXPeticionId ? refIntento(m.ofertaXPeticionId) : `Local #${m.destinoLocalId}`,
         estadoAnterior: null,
         estadoNuevo: null,
         tipoMovimiento: m.tipo,

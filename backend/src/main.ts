@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { LimitadorPeticiones, cabecerasSeguridad, reglasPorDefecto } from './common/seguridad-http';
 
 async function bootstrap() {
   const log = new Logger('Bootstrap');
@@ -10,6 +11,18 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.useBodyParser('json', { limit: '5mb' });
+
+  // D-65: detras de un proxy (hosting), la IP real llega en X-Forwarded-For.
+  const proxy = config.get<string>('TRUST_PROXY');
+  if (proxy) app.set('trust proxy', /^\d+$/.test(proxy) ? Number(proxy) : proxy);
+  // No anunciar el framework.
+  app.disable('x-powered-by');
+  // S1: cabeceras de seguridad. S2: limite de peticiones por IP ("off" lo desactiva).
+  app.use(cabecerasSeguridad(config.get<string>('NODE_ENV') === 'production'));
+  if (config.get<string>('LIMITE_PETICIONES') !== 'off') {
+    const general = Number(config.get<string>('LIMITE_PETICIONES_MINUTO')) || 300;
+    app.use(new LimitadorPeticiones(reglasPorDefecto(general)).middleware());
+  }
 
   app.setGlobalPrefix('api');
 

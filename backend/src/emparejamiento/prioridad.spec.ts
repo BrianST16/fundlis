@@ -11,14 +11,14 @@ describe('Puntaje de prioridad (D-38)', () => {
     expect(p).toEqual({ sisben: 0.8, caracterizacion: 0.6, antiguedad: 0.5, total: 0.64 }); // 0.5*0.6+0.3*0.8+0.2*0.5
   });
 
-  it('Sisben y caracterizacion son componentes distintos: cambiar uno no altera el otro', () => {
+  it('Sisbén y caracterización son componentes distintos: cambiar uno no altera el otro', () => {
     const a = calcularPrioridad({ puntajeSisben: 1, puntajeCaracterizacion: 0, creadaEn: AHORA }, COEF, AHORA);
     const b = calcularPrioridad({ puntajeSisben: 0, puntajeCaracterizacion: 1, creadaEn: AHORA }, COEF, AHORA);
     expect([a.sisben, a.caracterizacion, a.total]).toEqual([1, 0, 0.3]);
     expect([b.sisben, b.caracterizacion, b.total]).toEqual([0, 1, 0.5]);
   });
 
-  it('antiguedad ESTABLE: depende solo de la fecha original y del horizonte, no de otras peticiones', () => {
+  it('antigüedad ESTABLE: depende solo de la fecha original y del horizonte, no de otras peticiones', () => {
     expect(componenteAntiguedad(hace(30), AHORA, 90)).toBeCloseTo(1 / 3, 6);
     expect(componenteAntiguedad(hace(200), AHORA, 90)).toBe(1); // satura en 1
     expect(componenteAntiguedad(hace(0), AHORA, 90)).toBe(0);
@@ -28,7 +28,7 @@ describe('Puntaje de prioridad (D-38)', () => {
     expect(x).toEqual(y);
   });
 
-  it('la reactivacion conserva la fecha original: la antiguedad sigue creciendo (D-15)', () => {
+  it('la reactivacion conserva la fecha original: la antigüedad sigue creciendo (D-15)', () => {
     const creada = hace(60);
     const antes = calcularPrioridad({ puntajeSisben: 0.5, puntajeCaracterizacion: 0.5, creadaEn: creada }, COEF, hace(20));
     const despues = calcularPrioridad({ puntajeSisben: 0.5, puntajeCaracterizacion: 0.5, creadaEn: creada }, COEF, AHORA);
@@ -42,7 +42,7 @@ describe('Puntaje de prioridad (D-38)', () => {
     expect(describirCoeficientes(COEF)).not.toContain('%');
   });
 
-  it('orden total reproducible: total desc, luego la mas antigua, luego id', () => {
+  it('orden total reproducible: total desc, luego la más antigua, luego id', () => {
     const f = (id: number, total: number, dias: number) => ({
       peticionId: id,
       creadaEn: hace(dias),

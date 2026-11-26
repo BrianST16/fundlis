@@ -28,7 +28,7 @@ describe('GoogleService.verificar', () => {
     await expect(google().verificar('x')).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('valida contra la audiencia configurada', async () => {
+  it('válida contra la audiencia configurada', async () => {
     verifyIdToken.mockResolvedValue({
       getPayload: () => ({ sub: 's1', email: 'a@example.com', email_verified: true, name: 'A' }),
     });

@@ -17,7 +17,11 @@ USING (VALUES
     ('PESO_ANTIGUEDAD',      '0.20', 'Peso de la antiguedad de la peticion en la prioridad'),
     ('MAX_PETICIONES_ACTIVAS','5',   'Maximo de peticiones pendientes o aprobadas por estudiante'),
     ('MAX_BYTES_EVIDENCIA',  '2097152', 'Tamano maximo por fotografia en bytes (2 MB)'),
-    ('MIN_DONACIONES_RECURRENTE', '3', 'Donaciones completadas para marcar a un donador como recurrente en Aprobaciones')
+    ('MIN_DONACIONES_RECURRENTE', '3', 'Donaciones completadas para marcar a un donador como recurrente en Aprobaciones'),
+    ('PLAZO_ESPERA_LOCAL_DIAS_HABILES', '5', 'Dias habiles que da cada "esperar" en custodia Local, lote sin destino o devolucion pendiente'),
+    ('MAX_ESPERAS_LOCAL', '2', 'Esperas permitidas por objeto antes de tener que decidir su destino'),
+    ('PLAZO_POR_DEVOLVER_DIAS_HABILES', '5', 'Dias habiles para registrar la devolucion al donador cuando un destino Local queda por devolver'),
+    ('MAX_ESPERAS_DEVOLUCION', '1', 'Esperas permitidas en una devolucion pendiente antes de decidir custodia Local o recibirla para el LIS')
 ) AS s(clave, valor, descripcion)
 ON t.clave = s.clave
 WHEN NOT MATCHED THEN INSERT (clave, valor, descripcion) VALUES (s.clave, s.valor, s.descripcion);

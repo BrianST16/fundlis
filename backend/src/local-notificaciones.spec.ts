@@ -23,11 +23,19 @@ function gestor(resultados: Record<string, any>, repos: Record<string, any>) {
       const qb: any = { setLock: () => qb, where: () => qb, andWhere: () => qb, getOne: jest.fn(async () => resultados[e.name] ?? null) };
       return qb;
     }),
-    getRepository: jest.fn((e: any) => repos[e.name]),
+    // D-56: toda accion cierra las tareas DEFINIR_ESTADO abiertas de su objeto.
+    getRepository: jest.fn((e: any) =>
+      repos[e.name] ??
+      (e.name === 'Tarea'
+        ? (repos.Tarea = { update: jest.fn(async () => ({ affected: 0 })) })
+        : e.name === 'Usuario' // D-64: cuentas activas por defecto
+          ? (repos.Usuario = { findOne: jest.fn(async () => ({ activo: true })) })
+          : undefined),
+    ),
   };
 }
 
-describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
+describe('Local: sujeto institucional (D-19, D-20, D-43)', () => {
   function servicio(destino: any, extras: { titular?: any } = {}) {
     const repoDestino = { save: jest.fn(async (x) => ({ ...x, id: x.id ?? 33 })), create: jest.fn((x) => x), findOne: jest.fn(async () => null) };
     const repoLote = { update: jest.fn(), create: jest.fn((x) => x), save: jest.fn(async (x) => ({ ...x, id: 70 })) };
@@ -69,9 +77,9 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
   const admin: any = { sub: 1, esAdministrador: true, esPersonalLis: true };
   const auxiliar: any = { sub: 2, esAdministrador: false, esPersonalLis: true };
 
-  it('LOCAL aparece como fila fija al final y no es una peticion', () => {
+  it('Local aparece como fila fija al final y no es una petición', () => {
     expect(FILA_LOCAL.tipo).toBe('LOCAL');
-    expect(FILA_LOCAL.reglas.join(' ')).toContain('ultima opcion');
+    expect(FILA_LOCAL.reglas.join(' ')).toContain('última opción');
   });
 
   it('el auxiliar puede iniciar custodia temporal de un lote sin destino, sin crear peticiones', async () => {
@@ -85,9 +93,9 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
     expect(repoPeticion.create).not.toHaveBeenCalled();
   });
 
-  it('no inicia custodia LOCAL de un lote que tiene un intento vigente', async () => {
+  it('no inicia custodia Local de un lote que tiene un intento vigente', async () => {
     const { s } = servicio({ id: 33 }, { titular: { id: 40 } });
-    await expect(s.custodiaDesdeLote(70, 'Esperando respuesta del donador', 2)).rejects.toThrow('asignacion 40');
+    await expect(s.custodiaDesdeLote(70, 'Esperando respuesta del donador', 2)).rejects.toThrow('asignación 40');
   });
 
   // --- D-50 / correcciones 7 y 8: aceptacion con consentimiento del donador ---
@@ -165,7 +173,7 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
     expect(() => guard.canActivate(ctx(LocalDonadorController, 'responder', { perfil: Perfil.ESTUDIANTE, roles: [] }))).toThrow(ForbiddenException);
   });
 
-  it('reasignar desde custodia LOCAL cierra el destino y crea el intento con el mismo lote', async () => {
+  it('reasignar desde custodia Local cierra el destino y crea el intento con el mismo lote', async () => {
     const { s, repoDestino, asignaciones } = servicio({ id: 33, estado: 'CUSTODIA_TEMPORAL', loteId: 70, ofertaId: 1, cantidad: 2 });
     const r = await s.reasignar(33, 5, auxiliar.sub);
     expect(repoDestino.save).toHaveBeenCalledWith(expect.objectContaining({ estado: 'REASIGNADO' }));
@@ -175,7 +183,7 @@ describe('LOCAL: sujeto institucional (D-19, D-20, D-43)', () => {
 });
 
 describe('Emparejamiento en dos fases: compatibilidad (KD) y luego prioridad', () => {
-  it('excluye incompatibles, ordena por prioridad, oculta el Sisben al auxiliar y pone LOCAL al final', async () => {
+  it('excluye incompatibles, ordena por prioridad, oculta el Sisbén al auxiliar y pone Local al final', async () => {
     const cat = { id: 4, nombre: 'Ropa y calzado', medidaNombre: 'Talla' };
     const oferta = { id: 1, estado: 'APROBADA', categoriaId: 4, categoria: cat, cantidad: 3, nombreProducto: 'Chaqueta', estadoConservacion: 4, medida: 3 };
     const creada = new Date('2026-10-01T15:00:00Z');
@@ -197,7 +205,6 @@ describe('Emparejamiento en dos fases: compatibilidad (KD) y luego prioridad', (
       { find: jest.fn(async () => []) } as any,
       { find: jest.fn(async () => caracterizaciones) } as any,
       { find: jest.fn(async () => [{ codigo: 'A1', puntajeNecesidad: 1 }, { codigo: 'A2', puntajeNecesidad: 0.95 }, { codigo: 'C3', puntajeNecesidad: 0.47 }]) } as any,
-      {} as any,
       { find: jest.fn(async () => []) } as any,
       { find: jest.fn(async () => []) } as any,
       { coeficientesPrioridad: async () => ({ caracterizacion: 0.5, sisben: 0.3, antiguedad: 0.2, horizonteDias: 90 }) } as any,
@@ -241,7 +248,7 @@ describe('Notificaciones: bandeja + correo (D-42)', () => {
   }
   const aviso = { tipo: 'X', titulo: 'T', mensaje: 'M', clave: 'EVENTO:1' };
 
-  it('crea una notificacion en bandeja y encola un correo por destinatario', async () => {
+  it('crea una notificación en bandeja y encola un correo por destinatario', async () => {
     const { s, guardadas, correosGuardados } = servicio({ correoConfigurado: true });
     expect(await s.aUsuarios([5, 6, 5, null], aviso)).toBe(2);
     expect(guardadas.map((g) => g.usuarioId)).toEqual([5, 6]);
@@ -263,7 +270,7 @@ describe('Notificaciones: bandeja + correo (D-42)', () => {
     expect(correosGuardados[0].estado).toBe('SIN_CONFIGURACION');
   });
 
-  it('un fallo al notificar NO lanza (no revierte la operacion de negocio)', async () => {
+  it('un fallo al notificar NO lanza (no revierte la operación de negocio)', async () => {
     const { s, notificaciones } = servicio();
     notificaciones.save.mockRejectedValueOnce(new Error('BD caida'));
     await expect(s.aUsuarios([5], aviso)).resolves.toBe(0);
@@ -299,7 +306,7 @@ describe('CorreoService: envio, reintentos y reclamo (D-42)', () => {
     expect(filas[0].estado).toBe('ENVIADO');
   });
 
-  it('si el SMTP falla: reintenta con espera creciente y tras el maximo queda en ERROR', async () => {
+  it('si el SMTP falla: reintenta con espera creciente y tras el máximo queda en ERROR', async () => {
     const filas = [{ id: '1', estado: 'PENDIENTE', intentos: 0, destinatario: 'a@example.com', asunto: 'S', cuerpo: 'C' }];
     const s = new CorreoService(repo(filas) as any, parametros, config);
     s.usarTransporte({ sendMail: jest.fn(async () => { throw new Error('ECONNREFUSED'); }) } as any);
@@ -323,7 +330,7 @@ describe('CorreoService: envio, reintentos y reclamo (D-42)', () => {
 // ---------------------------------------------------------------------------
 // Tareas DEFINIR_ESTADO con reloj controlado
 // ---------------------------------------------------------------------------
-describe('TareasService.revisar con fecha simulada (sin esperar dias reales)', () => {
+describe('TareasService.revisar con fecha simulada (sin esperar días reales)', () => {
   const asignadaEn = new Date('2026-11-20T15:00:00Z');
   function servicio() {
     const tareas: any[] = [];
@@ -360,7 +367,7 @@ describe('TareasService.revisar con fecha simulada (sin esperar dias reales)', (
     return { s, tareas, notificaciones };
   }
 
-  it('dia anterior al limite: aviso de proximidad al donador y al LIS, sin tarea', async () => {
+  it('dia anterior al límite: aviso de proximidad al donador y al LIS, sin tarea', async () => {
     const { s, tareas, notificaciones } = servicio();
     const r = await s.revisar(new Date('2026-12-03T15:00:00Z'));
     expect(r.tareasCreadas).toBe(0);
@@ -369,7 +376,7 @@ describe('TareasService.revisar con fecha simulada (sin esperar dias reales)', (
     expect(notificaciones.aPersonalLis).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'PLAZO_PROXIMO' }));
   });
 
-  it('vencido: crea UNA tarea DEFINIR_ESTADO aunque la revision corra varias veces (idempotente)', async () => {
+  it('vencido: crea UNA tarea DEFINIR_ESTADO aunque la revisión corra varias veces (idempotente)', async () => {
     const { s, tareas, notificaciones } = servicio();
     const ahora = new Date('2026-12-07T15:00:00Z');
     await s.revisar(ahora);
@@ -391,7 +398,7 @@ describe('TareasService.revisar con fecha simulada (sin esperar dias reales)', (
 // ---------------------------------------------------------------------------
 // D-50: propuesta LOCAL sin respuesta del donador (reloj controlado)
 // ---------------------------------------------------------------------------
-describe('D-50 TareasService: propuesta LOCAL sin respuesta', () => {
+describe('D-50 TareasService: propuesta Local sin respuesta', () => {
   function servicio() {
     const tareas: any[] = [];
     const repoTareas: any = {
@@ -420,7 +427,7 @@ describe('D-50 TareasService: propuesta LOCAL sin respuesta', () => {
     return { s, tareas, notificaciones };
   }
 
-  it('dia anterior al limite: recordatorio al donador, sin tarea', async () => {
+  it('dia anterior al límite: recordatorio al donador, sin tarea', async () => {
     const { s, tareas, notificaciones } = servicio();
     await s.revisar(new Date('2026-12-03T15:00:00Z'));
     expect(tareas).toHaveLength(0);

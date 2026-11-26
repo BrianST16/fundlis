@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FotoComponent } from '../compartido/foto.component';
+import { PaginadorComponent, Paginado } from '../compartido/paginador.component';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { FilaRankingDonador, OfertaCatalogo, PeticionVista } from '../core/modelos';
@@ -10,23 +11,22 @@ import { fecha, mensajeError } from '../core/utilidades';
 @Component({
   selector: 'lis-aprobaciones',
   standalone: true,
-  imports: [CommonModule, FotoComponent],
+  imports: [CommonModule, FotoComponent, PaginadorComponent],
   template: `
     <h1>Aprobaciones</h1>
     <p class="subtitulo">
-      Revisa lo que publican donadores y estudiantes. Solo lo aprobado entra al catalogo y al
-      emparejamiento.
+      Solo lo aprobado aparece en el catálogo y en el emparejamiento.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
 
-    <h2>Donaciones pendientes ({{ ofertas().length }})</h2>
+    <h2 #tOfertas>Donaciones pendientes ({{ ofertas().length }})</h2>
     @if (!ofertas().length) {
       <p class="vacio">No hay donaciones por revisar.</p>
     }
     <div class="rejilla">
-      @for (o of ofertas(); track o.id) {
+      @for (o of pagOfertas.visibles(); track o.id) {
         <div class="tarjeta">
           @if (o.fotoId) {
             <lis-foto [evidenciaId]="o.fotoId" [alt]="o.nombreProducto" />
@@ -41,7 +41,7 @@ import { fecha, mensajeError } from '../core/utilidades';
             <p class="dato">Donador: <strong>{{ d.nombre }}</strong> &middot; {{ d.email }}</p>
             @if (historialDonador(d.id); as h) {
               @if (h.recurrente) {
-                <span class="etiqueta" title="Tiene {{ h.umbralRecurrente }} o mas donaciones que llegaron completas al LIS">
+                <span class="etiqueta" title="{{ h.umbralRecurrente }} o más donaciones completadas">
                   &#9733; Donador recurrente
                 </span>
               }
@@ -50,17 +50,16 @@ import { fecha, mensajeError } from '../core/utilidades';
                 @if (h.tasaCumplimiento !== null) { &middot; cumplimiento {{ pct(h.tasaCumplimiento) }} }
               </p>
             } @else {
-              <p class="dato" style="margin:.3rem 0 0">Donador nuevo: aun sin donaciones completadas.</p>
+              <p class="dato" style="margin:.3rem 0 0">Donador nuevo.</p>
             }
           }
           <p class="dato">#{{ o.id }} &middot; {{ f(o.publicadaEn) }}</p>
           @if (esPropia(o)) {
-            <span class="etiqueta ambar">Tu donacion</span>
+            <span class="etiqueta ambar">Tu donación</span>
           }
           @if (esPropia(o) && !auth.esAdministrador()) {
             <p class="dato" style="margin-top:.6rem">
-              No puedes revisar tu propia donacion: la aprueba o rechaza otro auxiliar o un
-              administrador.
+              La revisa otro auxiliar o un administrador.
             </p>
           } @else {
             <div class="fila" style="margin-top:.6rem">
@@ -73,13 +72,14 @@ import { fecha, mensajeError } from '../core/utilidades';
         </div>
       }
     </div>
+    <lis-paginador [control]="pagOfertas" [destino]="tOfertas" />
 
-    <h2>Peticiones pendientes ({{ peticiones().length }})</h2>
+    <h2 #tPeticiones>Peticiones pendientes ({{ peticiones().length }})</h2>
     @if (!peticiones().length) {
       <p class="vacio">No hay peticiones por revisar.</p>
     }
     <div class="rejilla">
-      @for (p of peticiones(); track p.id) {
+      @for (p of pagPeticiones.visibles(); track p.id) {
         <div class="tarjeta">
           <span class="etiqueta gris">{{ p.categoria.nombre }}</span>
           <p style="margin:.5rem 0 .25rem">{{ p.descripcion }}</p>
@@ -94,6 +94,7 @@ import { fecha, mensajeError } from '../core/utilidades';
         </div>
       }
     </div>
+    <lis-paginador [control]="pagPeticiones" [destino]="tPeticiones" />
   `,
 })
 export class AprobacionesComponent implements OnInit {
@@ -107,6 +108,8 @@ export class AprobacionesComponent implements OnInit {
 
   ofertas = signal<OfertaCatalogo[]>([]);
   peticiones = signal<PeticionVista[]>([]);
+  pagOfertas = new Paginado(this.ofertas, 12);
+  pagPeticiones = new Paginado(this.peticiones, 12);
   error = signal<string | null>(null);
   mensaje = signal<string | null>(null);
   f = fecha;
@@ -146,32 +149,32 @@ export class AprobacionesComponent implements OnInit {
 
   aprobarOferta(o: OfertaCatalogo): void {
     this.api.aprobarOferta(o.id).subscribe({
-      next: () => this.hecho(`Donacion #${o.id} aprobada.`),
+      next: () => this.hecho(`Donación #${o.id} aprobada.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
 
   rechazarOferta(o: OfertaCatalogo): void {
-    const motivo = prompt('Motivo del rechazo (minimo 5 caracteres):');
+    const motivo = prompt('Motivo del rechazo (mínimo 5 caracteres):');
     if (!motivo || motivo.trim().length < 5) return;
     this.api.rechazarOferta(o.id, motivo.trim()).subscribe({
-      next: () => this.hecho(`Donacion #${o.id} rechazada.`),
+      next: () => this.hecho(`Donación #${o.id} rechazada.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
 
   aprobarPeticion(p: PeticionVista): void {
     this.api.aprobarPeticion(p.id).subscribe({
-      next: () => this.hecho(`Peticion #${p.id} aprobada.`),
+      next: () => this.hecho(`Petición #${p.id} aprobada.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
 
   rechazarPeticion(p: PeticionVista): void {
-    const motivo = prompt('Motivo del rechazo (minimo 5 caracteres):');
+    const motivo = prompt('Motivo del rechazo (mínimo 5 caracteres):');
     if (!motivo || motivo.trim().length < 5) return;
     this.api.rechazarPeticion(p.id, motivo.trim()).subscribe({
-      next: () => this.hecho(`Peticion #${p.id} rechazada.`),
+      next: () => this.hecho(`Petición #${p.id} rechazada.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }

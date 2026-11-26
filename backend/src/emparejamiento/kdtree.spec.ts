@@ -20,7 +20,7 @@ function aleatorio(semilla: number) {
 }
 const entero = (r: () => number, a: number, b: number) => a + Math.floor(r() * (b - a + 1));
 
-describe('KdTreeAdaptativo: busqueda por rango ortogonal', () => {
+describe('KdTreeAdaptativo: búsqueda por rango ortogonal', () => {
   it('coincide con el filtro lineal en 400 conjuntos aleatorios (k = 2..4, con empates)', () => {
     let discrepancias = 0;
     for (let caso = 0; caso < 400; caso++) {
@@ -98,7 +98,7 @@ describe('Compatibilidad con atributos reales (D-41)', () => {
     expect(esCompatible(ofe(5, 6), pet(1, 2, 4))).toBe(false); // talla fuera de rango
     expect(esCompatible(ofe(3, null), pet(1))).toBe(true); // categoria sin medida
     expect(esCompatible(ofe(3, null), pet(1, 2, 4))).toBe(false); // medida desconocida: conservador
-    expect(motivoIncompatibilidad(ofe(2, 3), pet(3))).toContain('estado minimo 3');
+    expect(motivoIncompatibilidad(ofe(2, 3), pet(3))).toContain('estado mínimo 3');
   });
 
   it('la caja 3D de una oferta equivale al predicado, en 2000 pares aleatorios', () => {
@@ -115,7 +115,7 @@ describe('Compatibilidad con atributos reales (D-41)', () => {
     }
   });
 
-  it('la caja 2D de una peticion (sentido inverso) equivale al predicado, en 2000 pares', () => {
+  it('la caja 2D de una petición (sentido inverso) equivale al predicado, en 2000 pares', () => {
     const r = aleatorio(6);
     for (let i = 0; i < 2000; i++) {
       const tipo = r();
@@ -130,7 +130,7 @@ describe('Compatibilidad con atributos reales (D-41)', () => {
     }
   });
 
-  it('la categoria nunca es una coordenada: los puntos solo tienen atributos del producto', () => {
+  it('la categoría nunca es una coordenada: los puntos solo tienen atributos del producto', () => {
     expect(puntoPeticion(pet(3, 2, 4))).toHaveLength(3);
     expect(puntoOferta(ofe(3, 2))).toHaveLength(2);
   });

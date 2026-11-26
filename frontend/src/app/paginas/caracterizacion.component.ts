@@ -17,11 +17,9 @@ import { abrirBlob, fecha, leerComoCertificado, mensajeError, puntaje } from '..
   standalone: true,
   imports: [CommonModule],
   template: `
-    <h1>Mi caracterizacion</h1>
+    <h1>Mi caracterización</h1>
     <p class="subtitulo">
-      Estos datos solo los consulta el administrador del LIS y se usan para calcular la
-      prioridad cuando una donacion coincide con tu necesidad. Puedes actualizarlos cuando
-      cambie tu situacion.
+      Define tu prioridad en el emparejamiento. Solo la ve el administrador; actualízala si cambia tu situación.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
@@ -29,9 +27,7 @@ import { abrirBlob, fecha, leerComoCertificado, mensajeError, puntaje } from '..
 
     @if (actual(); as a) {
       <div class="aviso info">
-        Caracterizacion registrada. Puntaje actual: <strong>{{ pt(a.puntajeTotal) }}</strong>
-        <span class="dato">(escala de 0 a 1; 1 = mayor necesidad)</span>
-        &middot; grupo Sisben <strong>{{ a.grupoSisben }}</strong>.
+        Puntaje actual: <strong>{{ pt(a.puntajeTotal) }}</strong> <span class="dato">(0 a 1)</span> &middot; Sisbén <strong>{{ a.grupoSisben }}</strong>.
       </div>
     }
 
@@ -40,30 +36,28 @@ import { abrirBlob, fecha, leerComoCertificado, mensajeError, puntaje } from '..
         @for (p of form.preguntas; track p.id) {
           <label>{{ p.orden }}. {{ p.texto }}</label>
           <select [value]="respuestas()[p.id] ?? ''" (change)="responder(p.id, $any($event.target).value)">
-            <option value="">Selecciona una opcion</option>
+            <option value="">Selecciona una opción</option>
             @for (o of p.opciones; track o.id) {
               <option [value]="o.id">{{ o.texto }}</option>
             }
           </select>
         }
 
-        <label>Grupo Sisben</label>
+        <label>Grupo Sisbén</label>
         <select [value]="grupo()" (change)="grupo.set($any($event.target).value)">
           <option value="">Selecciona tu grupo</option>
           @for (g of form.gruposSisben; track g.codigo) {
             <option [value]="g.codigo">{{ g.codigo }} &mdash; {{ g.descripcion }}</option>
           }
         </select>
-        <p class="dato" style="margin-top:.5rem">
-          En el MVP no se exige cargar el certificado Sisben: basta con seleccionar el grupo.
-        </p>
+        
 
         <div class="fila" style="margin-top:1rem">
           <button [disabled]="!completo() || enviando()" (click)="guardar()">
-            {{ enviando() ? 'Guardando...' : 'Guardar caracterizacion' }}
+            {{ enviando() ? 'Guardando...' : 'Guardar caracterización' }}
           </button>
           @if (!completo()) {
-            <span class="dato">Responde todas las preguntas y elige tu grupo Sisben.</span>
+            <span class="dato">Responde todas las preguntas y elige tu grupo Sisbén.</span>
           }
         </div>
       </div>
@@ -71,12 +65,10 @@ import { abrirBlob, fecha, leerComoCertificado, mensajeError, puntaje } from '..
       <p class="vacio">Cargando formulario...</p>
     }
 
-    <h2>Certificado de estudio vigente (opcional)</h2>
+    <h2>Certificado de estudio (opcional)</h2>
     <div class="tarjeta">
       <p class="dato">
-        Ayuda al LIS a confirmar que eres estudiante (el correo institucional tambien lo tienen
-        profesores y administrativos). Por ahora es opcional: no afecta tu puntaje ni te impide
-        registrar peticiones. Solo lo ve el administrador. PDF, JPEG o PNG, maximo 2 MB.
+        Confirma que eres estudiante. Solo lo ve el administrador. PDF, JPEG o PNG, máximo 2 MB.
       </p>
 
       @if (errorCert()) { <div class="aviso error">{{ errorCert() }}</div> }
@@ -89,7 +81,7 @@ import { abrirBlob, fecha, leerComoCertificado, mensajeError, puntaje } from '..
                 [class.roja]="c.estadoRevision === 'RECHAZADO'">{{ legibleCert(c.estadoRevision) }}</span>
           <span class="dato">{{ c.nombreOriginal ?? 'certificado' }} &middot; {{ kb(c.tamanoBytes) }} &middot; subido {{ f(c.subidoEn) }}</span>
         </div>
-        @if (c.observacion) { <p class="dato">Observacion del LIS: <em>{{ c.observacion }}</em></p> }
+        @if (c.observacion) { <p class="dato">Observación del LIS: <em>{{ c.observacion }}</em></p> }
         <div class="fila" style="margin-top:.5rem">
           <button class="secundario pequeno" (click)="verCertificado()">Ver</button>
           <button class="peligro pequeno" (click)="eliminarCertificado()">Quitar</button>
@@ -141,7 +133,7 @@ export class CaracterizacionComponent implements OnInit {
     this.api.subirCertificado(datos).subscribe({
       next: (c) => {
         this.certificado.set(c);
-        this.mensajeCert.set('Certificado cargado. Queda pendiente de revision del administrador.');
+        this.mensajeCert.set('Certificado cargado. Queda pendiente de revisión del administrador.');
         this.subiendo.set(false);
       },
       error: (e) => {
@@ -170,7 +162,7 @@ export class CaracterizacionComponent implements OnInit {
   }
 
   legibleCert(e: EstadoRevisionCertificado): string {
-    return { PENDIENTE: 'Pendiente de revision', VALIDADO: 'Validado', RECHAZADO: 'Rechazado' }[e];
+    return { PENDIENTE: 'Pendiente de revisión', VALIDADO: 'Validado', RECHAZADO: 'Rechazado' }[e];
   }
 
   kb(bytes: number): string {
@@ -220,7 +212,7 @@ export class CaracterizacionComponent implements OnInit {
     this.api.guardarCaracterizacion({ grupoSisben: this.grupo(), respuestas }).subscribe({
       next: (r) => {
         this.guardado.set(
-          `Guardada. Tu puntaje de caracterizacion es ${puntaje(r.puntajeTotal)} (escala de 0 a 1).`,
+          `Guardada. Tu puntaje de caracterización es ${puntaje(r.puntajeTotal)} (escala de 0 a 1).`,
         );
         this.actual.set({ ...(this.actual() ?? ({} as MiCaracterizacion)), ...r });
         this.enviando.set(false);

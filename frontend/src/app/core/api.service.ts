@@ -5,7 +5,6 @@ import { environment } from '../../environments/environment';
 import {
   AlertasComportamiento,
   AsignacionResumen,
-  Candidato,
   Categoria,
   CertificadoMeta,
   DecisionTarea,
@@ -28,7 +27,6 @@ import {
   OfertaCatalogo,
   PeticionVista,
   ResultadoEmparejamiento,
-  ResumenPlazos,
   UsuarioAdmin,
 } from './modelos';
 
@@ -39,18 +37,11 @@ export class ApiService {
   private base = environment.apiUrl;
 
   // --- salud ---
-  salud(): Observable<any> {
-    return this.http.get(`${this.base}/salud`);
-  }
 
   // --- categorias ---
   categorias(todas = false): Observable<Categoria[]> {
     const params = todas ? new HttpParams().set('todas', 'true') : undefined;
     return this.http.get<Categoria[]>(`${this.base}/categorias`, { params });
-  }
-
-  crearCategoria(datos: { nombre: string; descripcion?: string }): Observable<Categoria> {
-    return this.http.post<Categoria>(`${this.base}/categorias`, datos);
   }
 
   // --- catalogo publico ---
@@ -274,10 +265,6 @@ export class ApiService {
     return this.http.post<DestinoLocal>(`${this.base}/local/${id}/devolucion`, datos);
   }
 
-  localReasignar(id: number, peticionId: number): Observable<any> {
-    return this.http.post(`${this.base}/local/${id}/reasignar`, { peticionId });
-  }
-
   // --- bandeja interna ---
   notificaciones(soloNoLeidas = false): Observable<NotificacionBandeja[]> {
     const params = soloNoLeidas ? new HttpParams().set('noLeidas', 'true') : undefined;
@@ -294,10 +281,6 @@ export class ApiService {
 
   marcarTodasLeidas(): Observable<any> {
     return this.http.patch(`${this.base}/notificaciones/leer-todas`, {});
-  }
-
-  estadoCorreo(): Observable<{ smtpConfigurado: boolean; porEstado: Record<string, number> }> {
-    return this.http.get<{ smtpConfigurado: boolean; porEstado: Record<string, number> }>(`${this.base}/notificaciones/correo/estado`);
   }
 
   // --- tareas DEFINIR_ESTADO ---
@@ -324,10 +307,6 @@ export class ApiService {
     return this.http.get<MiAsignacion[]>(`${this.base}/asignaciones/mias`);
   }
 
-  detalleAsignacion(id: number): Observable<any> {
-    return this.http.get(`${this.base}/asignaciones/${id}`);
-  }
-
   asignar(datos: { ofertaId: number; peticionId: number; cantidad: number }): Observable<any> {
     return this.http.post(`${this.base}/asignaciones`, datos);
   }
@@ -340,8 +319,12 @@ export class ApiService {
     return this.http.post(`${this.base}/asignaciones/${id}/entrega`, datos);
   }
 
-  cancelarAsignacion(id: number, motivo: string): Observable<any> {
-    return this.http.post(`${this.base}/asignaciones/${id}/cancelar`, { motivo });
+  /** causa (D-57) solo aplica a un producto EN_CUSTODIA: decide si cuenta como incumplimiento. */
+  cancelarAsignacion(id: number, motivo: string, causa?: 'ESTUDIANTE_NO_RECOGIO' | 'OTRO'): Observable<any> {
+    // Con causa "no recogio" el motivo puede ir vacio: el backend usa uno por defecto.
+    const cuerpo: Record<string, string> = causa ? { causa } : {};
+    if (motivo) cuerpo['motivo'] = motivo;
+    return this.http.post(`${this.base}/asignaciones/${id}/cancelar`, cuerpo);
   }
 
   marcarDevolucion(id: number, motivo: string): Observable<any> {
@@ -382,10 +365,6 @@ export class ApiService {
   bandejaPlazos(estado?: EstadoPlazo): Observable<ItemBandejaPlazos[]> {
     const params = estado ? new HttpParams().set('estado', estado) : undefined;
     return this.http.get<ItemBandejaPlazos[]>(`${this.base}/plazos/bandeja`, { params });
-  }
-
-  resumenPlazos(): Observable<ResumenPlazos> {
-    return this.http.get<ResumenPlazos>(`${this.base}/plazos/resumen`);
   }
 
   misPlazos(): Observable<MiPlazo[]> {

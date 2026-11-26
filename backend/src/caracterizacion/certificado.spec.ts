@@ -39,7 +39,7 @@ describe('D-46 Certificado de estudio: validacion del archivo', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
-  it('respeta el tamano maximo configurado', async () => {
+  it('respeta el tamaño máximo configurado', async () => {
     const { s, dataSource } = servicio(null, 10);
     await expect(
       s.subir(5, { mime: 'application/pdf', contenidoBase64: PDF.toString('base64') }),
@@ -67,7 +67,7 @@ describe('D-46 Certificado de estudio: validacion del archivo', () => {
     });
   });
 
-  it('rechazar exige una observacion', async () => {
+  it('rechazar exige una observación', async () => {
     const { s, dataSource } = servicio({ id: 9, usuarioId: 5, estadoRevision: 'PENDIENTE' });
     await expect(s.revisar(5, 'RECHAZADO', undefined, 1)).rejects.toBeInstanceOf(BadRequestException);
     expect(dataSource.transaction).not.toHaveBeenCalled();

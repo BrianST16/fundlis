@@ -9,10 +9,11 @@ import { EntidadHistorial, EstadoAsignacion, EstadoOferta, TipoMovimiento } from
 import { HistorialService } from '../common/historial.service';
 import { ParametrosService } from '../common/parametros.service';
 import { EmparejamientoService } from '../emparejamiento/emparejamiento.service';
-import { DestinoLocal, EstadoLocal, LoteFisico, Movimiento, Oferta, OfertaXPeticion } from '../entities';
+import { DecisionTarea, DestinoLocal, EstadoLocal, LoteFisico, Movimiento, Oferta, OfertaXPeticion } from '../entities';
 import { EvidenciasService } from '../evidencias/evidencias.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { saldoDeOferta } from '../ofertas/saldo';
+import { cerrarTareasDe } from '../tareas/cierre-tareas';
 
 type Posterior = () => Promise<unknown>;
 const recorte = (t: string, n = 60) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
@@ -68,13 +69,13 @@ export class LocalService {
       .setLock('pessimistic_write')
       .where('d.id = :id', { id })
       .getOne();
-    if (!d) throw new NotFoundException('El destino LOCAL no existe.');
+    if (!d) throw new NotFoundException('El destino Local no existe.');
     return d;
   }
 
   private exigir(d: DestinoLocal, ...estados: EstadoLocal[]) {
     if (!estados.includes(d.estado)) {
-      throw new BadRequestException(`Operacion no permitida: el destino LOCAL esta en ${d.estado}.`);
+      throw new BadRequestException(`Operación no permitida: el destino Local está en ${d.estado}.`);
     }
   }
 
@@ -86,6 +87,9 @@ export class LocalService {
       { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: anterior, estadoNuevo: nuevo, actorId, motivo },
       mgr,
     );
+    // D-56: todo cambio de estado del destino resuelve sus tareas abiertas,
+    // con la decision que corresponde, sin importar desde que pantalla se hizo.
+    await cerrarTareasDe(mgr, { destinoLocalId: d.id }, decisionPorCambio(anterior, nuevo), motivo, actorId);
   }
 
   // ------------------------------------------------------------------
@@ -135,7 +139,7 @@ export class LocalService {
 
   async detalle(id: number) {
     const d = await this.destinos.findOne({ where: { id }, relations: { oferta: { categoria: true, donador: true } } });
-    if (!d) throw new NotFoundException('El destino LOCAL no existe.');
+    if (!d) throw new NotFoundException('El destino Local no existe.');
     return { ...this.vista(d), historial: await this.historial.de(EntidadHistorial.LOCAL, id) };
   }
 
@@ -145,7 +149,7 @@ export class LocalService {
   async seleccionarDesdeOferta(ofertaId: number, cantidad: number, motivo: string, auxiliarId: number) {
     const suspendida = await this.calendario.recepcionSuspendida();
     if (suspendida) {
-      throw new BadRequestException(`La recepcion de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`);
+      throw new BadRequestException(`La recepción de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`);
     }
     const posteriores: Posterior[] = [];
     const id = await this.dataSource.transaction(async (mgr) => {
@@ -158,7 +162,7 @@ export class LocalService {
       if (oferta.estado !== EstadoOferta.APROBADA) throw new BadRequestException('Solo desde una oferta aprobada.');
       const { disponible } = await saldoDeOferta(oferta, mgr);
       if (cantidad > disponible) {
-        throw new BadRequestException(`Solo quedan ${disponible} unidades disponibles y se intentan destinar ${cantidad} a LOCAL.`);
+        throw new BadRequestException(`Solo quedan ${disponible} unidades disponibles y se intentan destinar ${cantidad} a Local.`);
       }
       const repo = mgr.getRepository(DestinoLocal);
       const d = await repo.save(
@@ -173,14 +177,14 @@ export class LocalService {
         }),
       );
       await this.historial.registrar(
-        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: null, estadoNuevo: 'ESPERA_RECEPCION', actorId: auxiliarId, motivo: `LOCAL elegido como ultima opcion para ${cantidad} u. de la oferta ${oferta.id}: ${motivo}` },
+        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: null, estadoNuevo: 'ESPERA_RECEPCION', actorId: auxiliarId, motivo: `Local elegido como última opción para ${cantidad} u. de la oferta ${oferta.id}: ${motivo}` },
         mgr,
       );
       posteriores.push(() =>
         this.notificaciones.aUsuarios([oferta.donadorId], {
           tipo: 'LOCAL_SELECCIONADO',
-          titulo: 'Tu donacion sera recibida por el LIS',
-          mensaje: `El LIS recibira ${cantidad} unidades de "${recorte(oferta.nombreProducto)}" bajo su custodia. Llevalas al LIS dentro de los proximos 10 dias habiles.`,
+          titulo: 'Tu donación sera recibida por el LIS',
+          mensaje: `El LIS recibira ${cantidad} unidades de "${recorte(oferta.nombreProducto)}" bajo su custodia. Llevalas al LIS dentro de los proximos 10 días hábiles.`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:ESPERA_RECEPCION`,
@@ -199,7 +203,7 @@ export class LocalService {
       this.exigir(d, 'ESPERA_RECEPCION');
       if (datos.cantidad !== d.cantidad) {
         throw new BadRequestException(
-          `Se esperaban ${d.cantidad} unidades. No hay recepcion parcial: cancela este destino y registra una nueva seleccion por lo que llego.`,
+          `Se esperaban ${d.cantidad} unidades. No hay recepción parcial: cancela este destino y registra una nueva seleccion por lo que llegó.`,
         );
       }
       const evidencia = await this.evidencias.guardar(datos.foto, auxiliarId, mgr);
@@ -230,12 +234,13 @@ export class LocalService {
       d.loteId = lote.id;
       d.custodiaDesde = new Date();
       await this.cambiar(mgr, d, 'CUSTODIA_TEMPORAL', auxiliarId, `Recibidas ${d.cantidad} u. con foto (lote ${lote.id}); inicia custodia temporal del LIS`);
+      await this.asignaciones.cerrarOfertaSiAgotadaEn(mgr, d.ofertaId, auxiliarId); // D-64 (C3)
       const oferta = await mgr.getRepository(Oferta).findOne({ where: { id: d.ofertaId } });
       posteriores.push(() =>
         this.notificaciones.aUsuarios([oferta.donadorId], {
           tipo: 'RECEPCION_REGISTRADA',
-          titulo: 'Recibimos tu donacion',
-          mensaje: `El LIS recibio ${d.cantidad} unidades de "${recorte(oferta.nombreProducto)}" bajo su custodia temporal. Gracias.`,
+          titulo: 'Recibimos tu donación',
+          mensaje: `El LIS recibió ${d.cantidad} unidades de "${recorte(oferta.nombreProducto)}" bajo su custodia temporal. Gracias.`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:CUSTODIA_TEMPORAL`,
@@ -258,8 +263,8 @@ export class LocalService {
       posteriores.push(() =>
         this.notificaciones.aUsuarios([oferta.donadorId], {
           tipo: 'LOCAL_CANCELADO',
-          titulo: 'Se cancelo la recepcion institucional',
-          mensaje: `El LIS cancelo la recepcion de "${recorte(oferta.nombreProducto)}" como destino institucional. Motivo: ${recorte(motivo, 200)}`,
+          titulo: 'Se canceló la recepción institucional',
+          mensaje: `El LIS canceló la recepción de "${recorte(oferta.nombreProducto)}" como destino institucional. Motivo: ${recorte(motivo, 200)}`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:CANCELADO`,
@@ -274,18 +279,24 @@ export class LocalService {
   // 2) Custodia temporal de un lote que ya esta en el LIS
   // ------------------------------------------------------------------
   async custodiaDesdeLote(loteId: number, motivo: string, auxiliarId: number) {
-    const id = await this.dataSource.transaction(async (mgr) => {
+    const id = await this.dataSource.transaction((mgr) => this.custodiaDesdeLoteEn(mgr, loteId, motivo, auxiliarId));
+    return this.detalle(id);
+  }
+
+  /** Version transaccional (D-62: la usa tambien una devolucion no retirada). */
+  async custodiaDesdeLoteEn(mgr: EntityManager, loteId: number, motivo: string, auxiliarId: number): Promise<number> {
+    {
       const lote = await this.asignaciones.bloquearLote(mgr, loteId);
-      if (lote.ubicacion !== 'EN_LIS') throw new BadRequestException('El lote ya no esta en el LIS.');
+      if (lote.ubicacion !== 'EN_LIS') throw new BadRequestException('El lote ya no está en el LIS.');
       const titular = await mgr.getRepository(OfertaXPeticion).findOne({
         where: { loteId, estado: In([EstadoAsignacion.EN_CUSTODIA, EstadoAsignacion.DEVOLUCION]) },
       });
-      if (titular) throw new BadRequestException(`El lote esta asignado (asignacion ${titular.id}). Resuelve esa asignacion primero.`);
+      if (titular) throw new BadRequestException(`El lote está asignado (asignación ${titular.id}). Resuelve esa asignación primero.`);
       const repo = mgr.getRepository(DestinoLocal);
       const yaLocal = await repo.findOne({
         where: { loteId, estado: In(['CUSTODIA_TEMPORAL', 'PROPUESTO_DONADOR', 'POR_DEVOLVER']) },
       });
-      if (yaLocal) throw new BadRequestException(`El lote ya esta bajo LOCAL (destino ${yaLocal.id}, ${yaLocal.estado}).`);
+      if (yaLocal) throw new BadRequestException(`El lote ya está bajo Local (destino ${yaLocal.id}, ${yaLocal.estado}).`);
       const ahora = new Date();
       const d = await repo.save(
         repo.create({
@@ -301,17 +312,112 @@ export class LocalService {
         }),
       );
       await mgr.getRepository(LoteFisico).update({ id: lote.id }, { sinDestinoDesde: null, actualizadoEn: ahora });
+      // D-56: el lote sin destino ya tiene destino (custodia LOCAL).
+      await cerrarTareasDe(mgr, { loteId: lote.id, soloSinDestino: true }, 'CUSTODIA_LOCAL', motivo, auxiliarId);
       await this.historial.registrar(
-        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: null, estadoNuevo: 'CUSTODIA_TEMPORAL', actorId: auxiliarId, motivo: `Custodia temporal LOCAL del lote ${lote.id}: ${motivo}` },
+        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: null, estadoNuevo: 'CUSTODIA_TEMPORAL', actorId: auxiliarId, motivo: `Custodia temporal Local del lote ${lote.id}: ${motivo}` },
         mgr,
       );
       await this.historial.registrar(
-        { entidad: EntidadHistorial.LOTE, entidadId: lote.id, estadoAnterior: 'SIN_DESTINO', estadoNuevo: 'CUSTODIA_LOCAL', actorId: auxiliarId, motivo: `Destino LOCAL ${d.id}` },
+        { entidad: EntidadHistorial.LOTE, entidadId: lote.id, estadoAnterior: 'SIN_DESTINO', estadoNuevo: 'CUSTODIA_LOCAL', actorId: auxiliarId, motivo: `Destino Local ${d.id}` },
         mgr,
       );
       return d.id;
+    }
+  }
+
+  /**
+   * D-62: devolucion que el donador no retiro (asignacion "en devolucion" o
+   * destino Local "por devolver"). Dos salidas, en UNA transaccion:
+   *  - CUSTODIA: el producto queda en custodia temporal Local, publicado para
+   *    emparejar (cualquier personal del LIS);
+   *  - LIS: el producto queda para el LIS. Solo el ADMINISTRADOR, porque el
+   *    donador no respondio y no hubo su aceptacion (queda en el historial).
+   */
+  async resolverDevolucionPendiente(
+    objeto: { asignacionId?: number; destinoLocalId?: number },
+    destino: 'CUSTODIA' | 'LIS',
+    motivo: string,
+    actual: UsuarioActual,
+  ) {
+    if (destino === 'LIS' && !actual.esAdministrador) {
+      throw new ForbiddenException('Solo el administrador recibe para el LIS un producto que el donador no retiró.');
+    }
+    const decision = destino === 'LIS' ? 'RECIBIR_LIS' : 'CUSTODIA_LOCAL';
+    const texto = destino === 'LIS'
+      ? `El donador no retiró el producto: el administrador lo recibe para el LIS. ${motivo}`
+      : `El donador no retiró el producto: pasa a custodia temporal, publicado para emparejar. ${motivo}`;
+    const posteriores: Posterior[] = [];
+    const destinoId = await this.dataSource.transaction(async (mgr) => {
+      let d: DestinoLocal | null = null;
+      let loteId: number;
+      let ofertaId: number;
+      if (objeto.asignacionId) {
+        const r = await this.asignaciones.cerrarDevolucionPendienteEn(mgr, objeto.asignacionId, texto, actual.sub, decision);
+        loteId = r.loteId;
+        ofertaId = r.ofertaId;
+      } else {
+        d = await this.bloquear(mgr, objeto.destinoLocalId!);
+        this.exigir(d, 'POR_DEVOLVER');
+        loteId = d.loteId!;
+        ofertaId = d.ofertaId;
+      }
+      const ahora = new Date();
+      let id: number;
+      if (destino === 'CUSTODIA') {
+        if (d) {
+          d.custodiaDesde = ahora; // el plazo de custodia vuelve a empezar
+          await this.cambiar(mgr, d, 'CUSTODIA_TEMPORAL', actual.sub, texto);
+          id = d.id;
+        } else {
+          id = await this.custodiaDesdeLoteEn(mgr, loteId, texto, actual.sub);
+        }
+      } else {
+        if (!d) {
+          const repo = mgr.getRepository(DestinoLocal);
+          const lote = await mgr.getRepository(LoteFisico).findOne({ where: { id: loteId } });
+          d = await repo.save(
+            repo.create({
+              ofertaId, loteId, origen: 'LOTE', cantidad: lote!.cantidad, estado: 'ACEPTADO',
+              seleccionadoPor: actual.sub, seleccionadoEn: ahora, custodiaDesde: ahora, motivo: texto.slice(0, 400),
+              aceptadoPor: actual.sub, aceptadoEn: ahora, cerradoEn: ahora, motivoCierre: texto.slice(0, 400),
+            }),
+          );
+          await this.historial.registrar(
+            { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: null, estadoNuevo: 'ACEPTADO', actorId: actual.sub, motivo: texto },
+            mgr,
+          );
+        } else {
+          d.aceptadoPor = actual.sub;
+          d.aceptadoEn = ahora;
+          d.cerradoEn = ahora;
+          d.motivoCierre = texto.slice(0, 400);
+          await this.cambiar(mgr, d, 'ACEPTADO', actual.sub, texto);
+        }
+        await mgr.getRepository(LoteFisico).update({ id: loteId }, { ubicacion: 'PATRIMONIO_LIS', sinDestinoDesde: null, actualizadoEn: ahora });
+        await this.historial.registrar(
+          { entidad: EntidadHistorial.LOTE, entidadId: loteId, estadoAnterior: 'POR_DEVOLVER', estadoNuevo: 'PATRIMONIO_LIS', actorId: actual.sub, motivo: texto },
+          mgr,
+        );
+        id = d.id;
+      }
+      const oferta = await mgr.getRepository(Oferta).findOne({ where: { id: ofertaId } });
+      posteriores.push(() =>
+        this.notificaciones.aUsuarios([oferta!.donadorId], {
+          tipo: destino === 'LIS' ? 'LOCAL_ACEPTADO' : 'DEVOLUCION_NO_RETIRADA',
+          titulo: destino === 'LIS' ? 'Tu donación quedó para el LIS' : 'Tu donación sigue en el LIS',
+          mensaje: destino === 'LIS'
+            ? `Como no se coordino el retiro de "${recorte(oferta!.nombreProducto)}", el administrador del LIS lo recibió como donativo del laboratorio.`
+            : `Como no se coordino el retiro de "${recorte(oferta!.nombreProducto)}", queda bajo custodia del LIS y podrá entregarse a un estudiante que lo necesite.`,
+          entidad: 'LOCAL',
+          entidadId: id,
+          clave: `LOCAL:${id}:DEVOLUCION_NO_RETIRADA:${destino}`,
+        }),
+      );
+      return id;
     });
-    return this.detalle(id);
+    await this.avisar(posteriores);
+    return this.detalle(destinoId);
   }
 
   // ------------------------------------------------------------------
@@ -323,7 +429,7 @@ export class LocalService {
   async proponer(id: number, motivo: string, actual: UsuarioActual) {
     // Defensa en profundidad: el controlador ya exige ADMINISTRADOR.
     if (!actual.esAdministrador) {
-      throw new ForbiddenException('Solo el administrador propone que una donacion quede para el LIS (D-50).');
+      throw new ForbiddenException('Solo el administrador propone que una donación quede para el LIS (D-50).');
     }
     const [dias, cierres] = await Promise.all([
       this.parametros.plazoRespuestaDonadorLocal(),
@@ -349,11 +455,11 @@ export class LocalService {
       posteriores.push(() =>
         this.notificaciones.aUsuarios([oferta.donadorId], {
           tipo: 'LOCAL_PROPUESTA',
-          titulo: 'El LIS quiere quedarse con tu donacion: necesitamos tu respuesta',
+          titulo: 'El LIS quiere quedarse con tu donación: necesitamos tu respuesta',
           mensaje:
             `El administrador del LIS propone que "${recorte(oferta.nombreProducto)}" (${d.cantidad} u.) quede como donativo para el laboratorio. ` +
             `Motivo: ${recorte(motivo, 300)}. ` +
-            `Entra a "Mis donaciones" para ACEPTAR o RECHAZAR antes del ${limite} (dias habiles). Si rechazas, el LIS te devolvera el producto.`,
+            `Entra a "Mis donaciones" para ACEPTAR o RECHAZAR antes del ${limite} (días hábiles). Si rechazas, el LIS te devolverá el producto.`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:PROPUESTA:${ahora.toISOString()}`,
@@ -385,6 +491,76 @@ export class LocalService {
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:RETIRADA:${new Date().toISOString()}`,
+        }),
+      );
+    });
+    await this.avisar(posteriores);
+    return this.detalle(id);
+  }
+
+  // ------------------------------------------------------------------
+  // D-61: mas tiempo para el donador (con fecha nueva y aviso)
+  // ------------------------------------------------------------------
+
+  /**
+   * Propuesta sin respuesta: el LIS habla con el donador y le da otro plazo
+   * para responder. Sin tope: se repite mientras haga falta, hasta que el
+   * administrador decida (retirar la propuesta o pasar a devolucion).
+   */
+  async ampliarPropuesta(id: number, motivo: string, actorId: number) {
+    const [dias, cierres] = await Promise.all([this.parametros.plazoRespuestaDonadorLocal(), this.calendario.cierres()]);
+    const posteriores: Posterior[] = [];
+    await this.dataSource.transaction(async (mgr) => {
+      const d = await this.bloquear(mgr, id);
+      this.exigir(d, 'PROPUESTO_DONADOR');
+      const limite = sumarDiasHabiles(fechaEnBogota(new Date()), dias, cierres);
+      d.propuestaLimite = limite;
+      await mgr.getRepository(DestinoLocal).save(d);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: d.estado, estadoNuevo: d.estado, actorId, motivo: `Más tiempo para responder la propuesta (hasta ${limite}): ${motivo}` },
+        mgr,
+      );
+      const oferta = await mgr.getRepository(Oferta).findOne({ where: { id: d.ofertaId } });
+      posteriores.push(() =>
+        this.notificaciones.aUsuarios([oferta.donadorId], {
+          tipo: 'LOCAL_PROPUESTA',
+          titulo: 'Tienes más tiempo para responder al LIS',
+          mensaje: `Puedes aceptar o rechazar que "${recorte(oferta.nombreProducto)}" quede para el LIS hasta el ${limite} (días hábiles), en "Mis donaciones".`,
+          entidad: 'LOCAL',
+          entidadId: d.id,
+          clave: `LOCAL:${d.id}:PROPUESTA_AMPLIADA:${limite}`,
+        }),
+      );
+    });
+    await this.avisar(posteriores);
+    return this.detalle(id);
+  }
+
+  /**
+   * Destino Local en espera de recepcion vencido: misma regla que una
+   * asignacion (D-58): el donador tiene UNA prorroga; despues se cancela.
+   * El tope lo valida TareasService; aqui se registra y se avisa.
+   */
+  async aplazarRecepcion(id: number, motivo: string, dias: number, actorId: number) {
+    const cierres = await this.calendario.cierres();
+    const posteriores: Posterior[] = [];
+    await this.dataSource.transaction(async (mgr) => {
+      const d = await this.bloquear(mgr, id);
+      this.exigir(d, 'ESPERA_RECEPCION');
+      const limite = sumarDiasHabiles(fechaEnBogota(new Date()), dias, cierres);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.LOCAL, entidadId: d.id, estadoAnterior: d.estado, estadoNuevo: d.estado, actorId, motivo: `Más tiempo al donador para llevar el producto (hasta ${limite}): ${motivo}` },
+        mgr,
+      );
+      const oferta = await mgr.getRepository(Oferta).findOne({ where: { id: d.ofertaId } });
+      posteriores.push(() =>
+        this.notificaciones.aUsuarios([oferta.donadorId], {
+          tipo: 'PLAZO_APLAZADO',
+          titulo: 'Tienes más tiempo para llevar tu donación',
+          mensaje: `Tienes hasta el ${limite} (días hábiles) para llevar "${recorte(oferta.nombreProducto)}" al LIS. Si no llega, el compromiso se cancelara.`,
+          entidad: 'LOCAL',
+          entidadId: d.id,
+          clave: `LOCAL:${d.id}:APLAZADO:${limite}`,
         }),
       );
     });
@@ -446,13 +622,13 @@ export class LocalService {
         await this.cambiar(mgr, d, 'ACEPTADO', actual.sub, `El donador ACEPTO que quede para el LIS${nota ? `: ${nota}` : ''}`);
         await mgr.getRepository(LoteFisico).update({ id: d.loteId }, { ubicacion: 'PATRIMONIO_LIS', actualizadoEn: ahora });
         await this.historial.registrar(
-          { entidad: EntidadHistorial.LOTE, entidadId: d.loteId, estadoAnterior: 'CUSTODIA_LOCAL', estadoNuevo: 'PATRIMONIO_LIS', actorId: actual.sub, motivo: `Destino LOCAL ${d.id} aceptado por el donador` },
+          { entidad: EntidadHistorial.LOTE, entidadId: d.loteId, estadoAnterior: 'CUSTODIA_LOCAL', estadoNuevo: 'PATRIMONIO_LIS', actorId: actual.sub, motivo: `Destino Local ${d.id} aceptado por el donador` },
           mgr,
         );
         posteriores.push(() =>
           this.notificaciones.aUsuarios([oferta.donadorId], {
             tipo: 'LOCAL_ACEPTADO',
-            titulo: 'Tu donacion quedo para el LIS',
+            titulo: 'Tu donación quedó para el LIS',
             mensaje: `Gracias. "${recorte(oferta.nombreProducto)}" (${d.cantidad} u.) queda como donativo del LIS. Motivo: ${recorte(d.propuestaMotivo ?? '', 300)}`,
             entidad: 'LOCAL',
             entidadId: d.id,
@@ -465,7 +641,7 @@ export class LocalService {
           this.notificaciones.aUsuarios([oferta.donadorId], {
             tipo: 'LOCAL_RECHAZADO',
             titulo: 'Registramos tu respuesta',
-            mensaje: `Rechazaste que "${recorte(oferta.nombreProducto)}" quede para el LIS. El LIS se comunicara contigo para devolverte el producto.`,
+            mensaje: `Rechazaste que "${recorte(oferta.nombreProducto)}" quede para el LIS. El LIS se comunicará contigo para devolverte el producto.`,
             entidad: 'LOCAL',
             entidadId: d.id,
             clave: `LOCAL:${d.id}:RECHAZADO`,
@@ -476,10 +652,10 @@ export class LocalService {
       posteriores.push(() =>
         this.notificaciones.aPersonalLis({
           tipo: acepta ? 'LOCAL_ACEPTADO' : 'LOCAL_POR_DEVOLVER',
-          titulo: acepta ? `LOCAL #${d.id}: el donador acepto` : `LOCAL #${d.id}: el donador rechazo, hay que devolver`,
+          titulo: acepta ? `Local #${d.id}: el donador aceptó` : `Local #${d.id}: el donador rechazo, hay que devolver`,
           mensaje: acepta
-            ? `El donador acepto que el destino LOCAL ${d.id} (${d.cantidad} u.) quede como patrimonio del LIS.`
-            : `El donador rechazo la propuesta del destino LOCAL ${d.id}. Coordina la devolucion (${d.cantidad} u.) y registrala con foto.${nota ? ` Comentario: ${recorte(nota, 200)}` : ''}`,
+            ? `El donador aceptó que el destino Local ${d.id} (${d.cantidad} u.) quede como patrimonio del LIS.`
+            : `El donador rechazo la propuesta del destino Local ${d.id}. Coordina la devolución (${d.cantidad} u.) y registrala con foto.${nota ? ` Comentario: ${recorte(nota, 200)}` : ''}`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:RESPUESTA`,
@@ -495,7 +671,7 @@ export class LocalService {
     await this.dataSource.transaction(async (mgr) => {
       const d = await this.bloquear(mgr, id);
       this.exigir(d, 'PROPUESTO_DONADOR', 'CUSTODIA_TEMPORAL');
-      await this.cambiar(mgr, d, 'POR_DEVOLVER', actorId, `Pasa a devolucion por decision del LIS: ${motivo}`);
+      await this.cambiar(mgr, d, 'POR_DEVOLVER', actorId, `Pasa a devolución por decisión del LIS: ${motivo}`);
     });
     return this.detalle(id);
   }
@@ -509,7 +685,7 @@ export class LocalService {
       const d = await this.bloquear(mgr, id);
       this.exigir(d, 'CUSTODIA_TEMPORAL', 'POR_DEVOLVER');
       if (datos.cantidad !== d.cantidad) {
-        throw new BadRequestException(`La devolucion debe ser por las ${d.cantidad} unidades: no hay devoluciones parciales.`);
+        throw new BadRequestException(`La devolución debe ser por las ${d.cantidad} unidades: no hay devoluciones parciales.`);
       }
       const evidencia = await this.evidencias.guardar(datos.foto, auxiliarId, mgr);
       const repoMov = mgr.getRepository(Movimiento);
@@ -535,8 +711,8 @@ export class LocalService {
       posteriores.push(() =>
         this.notificaciones.aUsuarios([oferta.donadorId], {
           tipo: 'DEVOLUCION_REGISTRADA',
-          titulo: 'Devolucion registrada',
-          mensaje: `Se registro la devolucion de "${recorte(oferta.nombreProducto)}" (${d.cantidad} u.).`,
+          titulo: 'Devolución registrada',
+          mensaje: `Se registró la devolución de "${recorte(oferta.nombreProducto)}" (${d.cantidad} u.).`,
           entidad: 'LOCAL',
           entidadId: d.id,
           clave: `LOCAL:${d.id}:DEVUELTO`,
@@ -554,7 +730,7 @@ export class LocalService {
       const d = await this.bloquear(mgr, id);
       this.exigir(d, 'CUSTODIA_TEMPORAL');
       d.cerradoEn = new Date();
-      d.motivoCierre = `Reasignado a la peticion ${peticionId}`;
+      d.motivoCierre = `Reasignado a la petición ${peticionId}`;
       await this.cambiar(mgr, d, 'REASIGNADO', auxiliarId, d.motivoCierre);
       return this.asignaciones.reasignarLoteEn(mgr, d.loteId, peticionId, auxiliarId, p, posteriores);
     });
@@ -613,4 +789,18 @@ export class LocalService {
         filtro === 'SIN_DESTINO' ? l.sinDestino : filtro === 'DISPONIBLES' ? l.sinDestino || l.enCustodiaLocal : true,
       );
   }
+}
+
+/** D-56: que decision representa cada cambio de estado de un destino LOCAL. */
+export function decisionPorCambio(anterior: EstadoLocal, nuevo: EstadoLocal): DecisionTarea {
+  if (nuevo === 'CANCELADO') return 'CANCELAR_INTENTO';
+  if (nuevo === 'REASIGNADO') return 'REASIGNAR';
+  if (nuevo === 'POR_DEVOLVER') return 'DEVOLUCION';
+  if (anterior === 'PROPUESTO_DONADOR' && nuevo === 'CUSTODIA_TEMPORAL') return 'RETIRAR_PROPUESTA';
+  // D-62: devolucion no retirada.
+  if (anterior === 'POR_DEVOLVER' && nuevo === 'CUSTODIA_TEMPORAL') return 'CUSTODIA_LOCAL';
+  if (anterior === 'POR_DEVOLVER' && nuevo === 'ACEPTADO') return 'RECIBIR_LIS';
+  // Recepcion registrada, respuesta del donador, propuesta enviada o devolucion
+  // fisica: no hubo una decision DEFINIR_ESTADO, el objeto simplemente avanzo.
+  return 'SIN_ACCION';
 }

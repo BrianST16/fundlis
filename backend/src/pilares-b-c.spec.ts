@@ -14,7 +14,6 @@ import {
   EstadoPeticion,
   Perfil,
   Rol,
-  TipoMovimiento,
 } from './common/enums';
 import { calcularPlazo } from './plazos/plazos';
 import { PlazosController } from './plazos/plazos.controller';
@@ -29,7 +28,7 @@ const asignadaEn = new Date('2026-11-20T15:00:00Z'); // viernes 20-nov, 10:00 Bo
 describe('Pilar B: calcularPlazo', () => {
   const asignado = { estado: EstadoAsignacion.ASIGNADO, asignadaEn };
 
-  it('donador: 10 dias habiles, en plazo a mitad de camino', () => {
+  it('donador: 10 días hábiles, en plazo a mitad de camino', () => {
     const p = calcularPlazo(asignado, new Date('2026-11-25T15:00:00Z'), CONFIG);
     expect(p).toMatchObject({
       responsable: 'DONADOR',
@@ -41,7 +40,7 @@ describe('Pilar B: calcularPlazo', () => {
     });
   });
 
-  it('donador: por vencer el dia anterior y el mismo dia limite', () => {
+  it('donador: por vencer el dia anterior y el mismo dia límite', () => {
     expect(calcularPlazo(asignado, new Date('2026-12-03T15:00:00Z'), CONFIG).estado).toBe('POR_VENCER');
     const hoy = calcularPlazo(asignado, new Date('2026-12-04T22:00:00Z'), CONFIG);
     expect(hoy.estado).toBe('POR_VENCER');
@@ -59,14 +58,14 @@ describe('Pilar B: calcularPlazo', () => {
     ]);
   });
 
-  it('una prorroga (diasExtra) mueve la fecha limite en dias habiles', () => {
+  it('una prórroga (diasExtra) mueve la fecha límite en días hábiles', () => {
     const p = calcularPlazo({ ...asignado, diasExtra: 5 }, new Date('2026-12-07T15:00:00Z'), CONFIG);
     // 10 dias habiles -> 4-dic; +5: 7, (8 festivo), 9, 10, 11, 14 -> 14-dic.
     expect(p.fechaLimite).toBe('2026-12-14');
     expect(p.estado).toBe('EN_PLAZO');
   });
 
-  it('reasignacion: el plazo del estudiante corre desde custodiaDesde, no desde la recepcion original', () => {
+  it('reasignación: el plazo del estudiante corre desde custodiaDesde, no desde la recepción original', () => {
     const p = calcularPlazo(
       { estado: EstadoAsignacion.EN_CUSTODIA, asignadaEn, recibidaEn: new Date('2026-11-01T15:00:00Z'), custodiaDesde: new Date('2026-12-04T20:00:00Z') },
       new Date('2026-12-07T15:00:00Z'),
@@ -75,7 +74,7 @@ describe('Pilar B: calcularPlazo', () => {
     expect(p.fechaLimite).toBe('2026-12-10');
   });
 
-  it('estudiante: 3 dias habiles desde EN_CUSTODIA, salta el festivo del 8-dic', () => {
+  it('estudiante: 3 días hábiles desde EN_CUSTODIA, salta el festivo del 8-dic', () => {
     const p = calcularPlazo(
       { estado: EstadoAsignacion.EN_CUSTODIA, asignadaEn, recibidaEn: new Date('2026-12-04T20:00:00Z') },
       new Date('2026-12-11T15:00:00Z'),
@@ -255,7 +254,7 @@ describe('Pilar C: AnaliticaService con datos ficticios', () => {
     expect(r.find((x) => x.usuarioId === 8).recurrente).toBe(false);
   });
 
-  it('indicadores coinciden con el calculo manual', async () => {
+  it('indicadores coinciden con el cálculo manual', async () => {
     const i = await servicio().indicadores();
     expect(i.asignacionesPorEstado).toMatchObject({ ENTREGADO: 1, CANCELADO: 4, ASIGNADO: 1 });
     expect(i.unidadesOfertadas).toBe(20); // solo la oferta aprobada
@@ -294,7 +293,7 @@ describe('Pilar C: AnaliticaService con datos ficticios', () => {
 // ---------------------------------------------------------------------------
 // RBAC de los endpoints nuevos (metadatos reales + RolesGuard real)
 // ---------------------------------------------------------------------------
-describe('RBAC de analitica y plazos', () => {
+describe('RBAC de analítica y plazos', () => {
   const guard = new RolesGuard(new Reflector());
   const ctx = (clase: any, metodo: string, usuario: any) =>
     ({
@@ -310,7 +309,7 @@ describe('RBAC de analitica y plazos', () => {
   });
 
   it.each(['indicadores', 'rankingEstudiantes', 'rankingDonadores', 'alertas'])(
-    'analitica.%s: estudiante y donador 403; auxiliar y administrador 200',
+    'analítica.%s: estudiante y donador 403; auxiliar y administrador 200',
     (metodo) => {
       expect(() => guard.canActivate(ctx(AnaliticaController, metodo, u(Perfil.ESTUDIANTE)))).toThrow(ForbiddenException);
       expect(() => guard.canActivate(ctx(AnaliticaController, metodo, u(Perfil.DONADOR)))).toThrow(ForbiddenException);

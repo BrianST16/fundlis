@@ -64,7 +64,7 @@ export class AuthService {
         const porCorreo = await repoUsuario.findOne({ where: { email: identidad.email } });
         if (porCorreo) {
           throw new ForbiddenException(
-            'Ese correo ya esta registrado con otra cuenta de Google.',
+            'Ese correo ya está registrado con otra cuenta de Google.',
           );
         }
         u = repoUsuario.create({
@@ -83,7 +83,7 @@ export class AuthService {
             estadoAnterior: null,
             estadoNuevo: `ALTA_${perfil}`,
             actorId: u.id,
-            motivo: 'Primer inicio de sesion con Google',
+            motivo: 'Primer inicio de sesión con Google',
           }),
         );
         this.log.log(`Usuario nuevo ${u.email} con perfil ${perfil}`);
@@ -95,7 +95,7 @@ export class AuthService {
 
       if (!u.activo) {
         throw new ForbiddenException(
-          `La cuenta esta bloqueada. Motivo: ${u.motivoBloqueo ?? 'no registrado'}`,
+          `La cuenta está bloqueada. Motivo: ${u.motivoBloqueo ?? 'no registrado'}`,
         );
       }
 
@@ -147,7 +147,7 @@ export class AuthService {
   async perfilVigente(usuarioId: number): Promise<PayloadJwt> {
     const u = await this.usuarios.findOne({ where: { id: usuarioId } });
     if (!u || !u.activo) {
-      throw new ForbiddenException('La cuenta no esta disponible.');
+      throw new ForbiddenException('La cuenta no está disponible.');
     }
     return {
       sub: u.id,

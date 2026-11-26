@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <base href="/">
   <title>LIS Dona</title>
+  <!-- Aplica el modo oscuro antes de cargar Angular (sin parpadeo en blanco). -->
+  <script>
+    try {
+      var t = localStorage.getItem('lis.tema');
+      if (t === 'oscuro' || (t === null && matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-tema', 'oscuro');
+      }
+    } catch (e) {}
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Google Identity Services: entrega el ID token que el backend verifica. -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>

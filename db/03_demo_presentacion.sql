@@ -23,7 +23,7 @@
    Lo que se crea para ellas lleva [DEMO] en el nombre y se borra al volver
    a ejecutar el script.
 
-   Despues de ejecutarlo: en "Plazos y tareas" pulsa "Revisar ahora" para
+   Despues de ejecutarlo: en "Entregas y plazos" pulsa "Revisar ahora" para
    que se creen las tareas DEFINIR_ESTADO de los casos vencidos.
 
    Ejecutar en SSMS / Azure Data Studio (o sqlcmd -I) sobre LisDona.
@@ -115,6 +115,9 @@ DELETE FROM MOVIMIENTO WHERE id IN (SELECT id FROM @m);
 DELETE FROM OFERTA_X_PETICION WHERE id IN (SELECT id FROM @x);
 DELETE FROM DESTINO_LOCAL WHERE id IN (SELECT id FROM @d);
 DELETE FROM LOTE_FISICO WHERE id IN (SELECT id FROM @l);
+-- Migracion 014: el historial es inmutable; el script demo se identifica
+-- para poder borrar SOLO sus propias filas [DEMO].
+EXEC sp_set_session_context @key = N'lis_mantenimiento_demo', @value = 1;
 DELETE FROM HISTORIAL_ESTADO
  WHERE actor_id IN (SELECT id FROM @u)
     OR (entidad = 'OFERTA'     AND entidad_id IN (SELECT id FROM @o))
@@ -123,6 +126,7 @@ DELETE FROM HISTORIAL_ESTADO
     OR (entidad = 'LOTE'       AND entidad_id IN (SELECT id FROM @l))
     OR (entidad = 'LOCAL'      AND entidad_id IN (SELECT id FROM @d))
     OR (entidad = 'USUARIO'    AND entidad_id IN (SELECT id FROM @u));
+EXEC sp_set_session_context @key = N'lis_mantenimiento_demo', @value = NULL;
 DELETE FROM OFERTA WHERE id IN (SELECT id FROM @o) AND oferta_origen_id IS NOT NULL;
 DELETE FROM OFERTA WHERE id IN (SELECT id FROM @o);
 DELETE FROM PETICION WHERE id IN (SELECT id FROM @p);
@@ -710,5 +714,5 @@ UNION ALL SELECT 'Destinos LOCAL', COUNT(*) FROM DESTINO_LOCAL WHERE oferta_id I
 UNION ALL SELECT 'Movimientos con foto', COUNT(*) FROM MOVIMIENTO WHERE lote_id IN (SELECT id FROM LOTE_FISICO WHERE oferta_id IN (SELECT id FROM OFERTA WHERE nombre_producto LIKE '%\[DEMO\]%' ESCAPE '\'))
 UNION ALL SELECT 'Casos en cuenta donador real', CASE WHEN @DR IS NULL THEN 0 ELSE 3 END
 UNION ALL SELECT 'Casos en cuenta estudiante real', CASE WHEN @ER IS NULL THEN 0 ELSE 2 END;
-PRINT 'Datos de demostracion cargados. En "Plazos y tareas" pulsa "Revisar ahora" para generar las tareas DEFINIR_ESTADO.';
+PRINT 'Datos de demostracion cargados. En "Entregas y plazos" pulsa "Revisar ahora" para generar las tareas DEFINIR_ESTADO.';
 GO

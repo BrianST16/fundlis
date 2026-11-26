@@ -1,38 +1,36 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FotoComponent } from '../compartido/foto.component';
+import { SeguimientoComponent } from '../compartido/seguimiento.component';
+import { PaginadorComponent, Paginado } from '../compartido/paginador.component';
 import { ApiService } from '../core/api.service';
-import { Categoria, ESTADOS_CONSERVACION, FotoEnviable, OfertaCatalogo, PropuestaLocal } from '../core/modelos';
+import { Categoria, ESTADOS_CONSERVACION, FotoEnviable, MiAsignacion, MiPlazo, OfertaCatalogo, PropuestaLocal } from '../core/modelos';
 import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
 
 @Component({
   selector: 'lis-mis-ofertas',
   standalone: true,
-  imports: [CommonModule, FotoComponent],
+  imports: [CommonModule, FotoComponent, SeguimientoComponent, PaginadorComponent],
   template: `
     <h1>Mis donaciones</h1>
     <p class="subtitulo">
-      Publica lo que quieres donar. El personal del LIS revisa cada publicacion y, una vez
-      aprobada, aparece de forma anonima en el catalogo.
+      Publica lo que quieres donar. Al aprobarse, aparece en el catálogo sin tus datos.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
     @if (mensaje()) { <div class="aviso ok">{{ mensaje() }}</div> }
 
     @if (propuestasPendientes().length) {
-      <h2>El LIS quiere quedarse con tu donacion ({{ propuestasPendientes().length }})</h2>
+      <h2>El LIS quiere quedarse con tu donación ({{ propuestasPendientes().length }})</h2>
       @for (p of propuestasPendientes(); track p.id) {
-        <div class="tarjeta" style="border-color:var(--ambar)">
+        <div class="tarjeta destacada">
           @if (p.fotoId) { <lis-foto [evidenciaId]="p.fotoId" [alt]="p.producto" /> }
           <strong>{{ p.producto }}</strong> <span class="etiqueta gris">{{ p.cantidad }} u.</span>
           <p style="margin:.5rem 0">
-            Tu donacion esta bajo custodia del LIS. El administrador propone que quede como donativo
-            para el laboratorio. <strong>Motivo:</strong> {{ p.motivo }}
+            El LIS propone quedarse con esta donación. <strong>Motivo:</strong> {{ p.motivo }}
           </p>
           <p class="dato">
-            Responde antes del <strong>{{ p.limite }}</strong> (dias habiles). Si rechazas, el LIS se
-            comunicara contigo para devolverte el producto. Sin tu respuesta, el producto
-            <strong>no</strong> queda para el LIS.
+            Responde hasta el <strong>{{ p.limite }}</strong>. Si no aceptas, se te devolverá.
           </p>
           <div class="fila" style="margin-top:.5rem">
             <button class="pequeno" [disabled]="respondiendo()" (click)="responder(p, true)">Acepto que quede para el LIS</button>
@@ -43,11 +41,11 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
     }
 
     <div class="tarjeta">
-      <strong>Nueva donacion</strong>
+      <strong>Nueva donación</strong>
 
-      <label>Categoria</label>
+      <label>Categoría</label>
       <select [value]="categoriaId()" (change)="categoriaId.set($any($event.target).value)">
-        <option value="">Selecciona una categoria</option>
+        <option value="">Selecciona una categoría</option>
         @for (c of categorias(); track c.id) {
           <option [value]="c.id">{{ c.nombre }}</option>
         }
@@ -57,10 +55,10 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
       <input
         [value]="nombre()"
         (input)="nombre.set($any($event.target).value)"
-        placeholder="Ejemplo: calculadora cientifica Casio fx-570"
+        placeholder="Ejemplo: calculadora científica Casio fx-570"
       />
 
-      <label>Descripcion y estado del producto</label>
+      <label>Descripción y estado del producto</label>
       <textarea
         [value]="descripcion()"
         (input)="descripcion.set($any($event.target).value)"
@@ -75,7 +73,7 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
         (input)="cantidad.set($any($event.target).value)"
       />
 
-      <label>Estado de conservacion (se usa para encontrar peticiones compatibles)</label>
+      <label>Estado de conservación</label>
       <select [value]="conservacion()" (change)="conservacion.set($any($event.target).value)">
         @for (e of estados; track e.valor) { <option [value]="e.valor">{{ e.texto }}</option> }
       </select>
@@ -86,23 +84,23 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
                [value]="medida_()" (input)="medida_.set($any($event.target).value)" />
       }
 
-      <label>Fotografia del producto (opcional)</label>
+      <label>Fotografía del producto (opcional)</label>
       <input type="file" accept="image/jpeg,image/png,image/webp" (change)="elegirFoto($event)" />
       @if (foto()) { <p class="dato">Imagen lista: {{ foto()!.nombreOriginal }}</p> }
 
       <div class="fila" style="margin-top:.85rem">
         <button [disabled]="!puedeCrear() || enviando()" (click)="crear()">
-          {{ enviando() ? 'Publicando...' : 'Publicar donacion' }}
+          {{ enviando() ? 'Publicando...' : 'Publicar donación' }}
         </button>
       </div>
     </div>
 
-    <h2>Historial ({{ ofertas().length }})</h2>
+    <h2 #tHistorial>Historial ({{ ofertas().length }})</h2>
     @if (!ofertas().length) {
-      <p class="vacio">Todavia no has publicado donaciones.</p>
+      <p class="vacio">Todavía no has publicado donaciones.</p>
     }
     <div class="rejilla">
-      @for (o of ofertas(); track o.id) {
+      @for (o of pagHistorial.visibles(); track o.id) {
         <div class="tarjeta">
           @if (o.fotoId) {
             <lis-foto [evidenciaId]="o.fotoId" [alt]="o.nombreProducto" />
@@ -119,7 +117,7 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
           <h3 style="margin:.5rem 0 .25rem; font-size:1rem">{{ o.nombreProducto }}</h3>
           <p class="dato">{{ o.descripcion }}</p>
           <p class="dato">
-            Estado: <strong>{{ o.estadoConservacionTexto }}</strong>
+            Conservación: <strong>{{ o.estadoConservacionTexto }}</strong>
             @if (o.medidaNombre) { &middot; {{ o.medidaNombre }} <strong>{{ o.medida }}</strong> }
           </p>
 
@@ -135,13 +133,17 @@ import { fecha, leerComoFoto, mensajeError } from '../core/utilidades';
             <p class="dato">Motivo del rechazo: <strong>{{ o.motivoRechazo }}</strong></p>
           }
           <p class="dato">#{{ o.id }} &middot; {{ f(o.publicadaEn) }}</p>
+          <!-- Seguimiento de cada entrega comprometida (antes "Mis movimientos"). -->
+          <lis-seguimiento [asignaciones]="asignacionesDe(o.id)" [plazos]="plazos()" />
 
-          @if (o.estado === 'PENDIENTE_APROBACION' || o.estado === 'APROBADA') {
+          <!-- D-64 (C3): solo si el servidor lo permitiria (sin ninguna asignacion). -->
+          @if (o.puedeCancelar) {
             <button class="peligro pequeno" (click)="cancelar(o)">Cancelar</button>
           }
         </div>
       }
     </div>
+    <lis-paginador [control]="pagHistorial" [destino]="tHistorial" />
   `,
 })
 export class MisOfertasComponent implements OnInit {
@@ -149,6 +151,7 @@ export class MisOfertasComponent implements OnInit {
 
   categorias = signal<Categoria[]>([]);
   ofertas = signal<OfertaCatalogo[]>([]);
+  pagHistorial = new Paginado(this.ofertas, 15);
   categoriaId = signal('');
   nombre = signal('');
   descripcion = signal('');
@@ -176,10 +179,26 @@ export class MisOfertasComponent implements OnInit {
       next: (o) => this.ofertas.set(o),
       error: (e) => this.error.set(mensajeError(e)),
     });
+    this.api.misAsignaciones().subscribe({
+      next: (a) => this.asignaciones.set(a),
+      error: () => this.asignaciones.set([]),
+    });
+    this.api.misPlazos().subscribe({
+      next: (l) => this.plazos.set(new Map(l.map((p) => [p.asignacionId, p]))),
+      error: () => this.plazos.set(new Map()), // no debe ocultar la lista principal
+    });
     this.api.misPropuestasLocal().subscribe({
       next: (p) => this.propuestas.set(p),
       error: () => this.propuestas.set([]),
     });
+  }
+
+  /** Asignaciones propias y sus plazos (dias habiles), para el seguimiento. */
+  asignaciones = signal<MiAsignacion[]>([]);
+  plazos = signal<Map<number, MiPlazo>>(new Map());
+
+  asignacionesDe(ofertaId: number): MiAsignacion[] {
+    return this.asignaciones().filter((a) => a.ofertaId === ofertaId);
   }
 
   // --- D-50 / correccion 8: el donador decide si su donacion queda para el LIS ---
@@ -205,7 +224,7 @@ export class MisOfertasComponent implements OnInit {
         this.mensaje.set(
           acepta
             ? `Gracias: "${p.producto}" queda como donativo del LIS.`
-            : `Registramos tu respuesta. El LIS se comunicara contigo para devolverte "${p.producto}".`,
+            : `Registramos tu respuesta. El LIS se comunicará contigo para devolverte "${p.producto}".`,
         );
         this.error.set(null);
         this.respondiendo.set(false);
@@ -258,7 +277,7 @@ export class MisOfertasComponent implements OnInit {
         })
         .subscribe({
           next: () => {
-            this.mensaje.set('Donacion publicada. Queda pendiente de aprobacion del LIS.');
+            this.mensaje.set('Donación publicada. Queda pendiente de aprobación del LIS.');
             this.nombre.set('');
             this.descripcion.set('');
             this.cantidad.set('1');
@@ -268,7 +287,7 @@ export class MisOfertasComponent implements OnInit {
             this.cargar();
           },
           error: (e) => {
-            this.error.set(mensajeError(e, 'No se pudo publicar la donacion.'));
+            this.error.set(mensajeError(e, 'No se pudo publicar la donación.'));
             this.enviando.set(false);
           },
         });
@@ -278,7 +297,7 @@ export class MisOfertasComponent implements OnInit {
       this.api.subirFoto(imagen).subscribe({
         next: (r) => publicar(r.id),
         error: (e) => {
-          this.error.set(mensajeError(e, 'No se pudo subir la fotografia.'));
+          this.error.set(mensajeError(e, 'No se pudo subir la fotografía.'));
           this.enviando.set(false);
         },
       });
@@ -288,11 +307,11 @@ export class MisOfertasComponent implements OnInit {
   }
 
   cancelar(o: OfertaCatalogo): void {
-    const motivo = prompt('Motivo de la cancelacion (minimo 5 caracteres):');
+    const motivo = prompt('Motivo de la cancelación (mínimo 5 caracteres):');
     if (!motivo || motivo.trim().length < 5) return;
     this.api.cancelarOferta(o.id, motivo.trim()).subscribe({
       next: () => {
-        this.mensaje.set(`Donacion #${o.id} cancelada.`);
+        this.mensaje.set(`Donación #${o.id} cancelada.`);
         this.cargar();
       },
       error: (e) => this.error.set(mensajeError(e, 'No se pudo cancelar.')),
@@ -301,11 +320,11 @@ export class MisOfertasComponent implements OnInit {
 
   legible(estado?: string): string {
     const mapa: Record<string, string> = {
-      PENDIENTE_APROBACION: 'Pendiente de aprobacion',
+      PENDIENTE_APROBACION: 'Pendiente de aprobación',
       APROBADA: 'Aprobada',
       RECHAZADA: 'Rechazada',
       CANCELADA: 'Cancelada',
-      CERRADA: 'Cerrada',
+      CERRADA: 'Completada',
     };
     return mapa[estado ?? ''] ?? estado ?? '-';
   }

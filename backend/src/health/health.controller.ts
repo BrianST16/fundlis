@@ -22,7 +22,7 @@ export class HealthController {
       await this.ds.query('SELECT 1');
       bd = 'conectada';
     } catch (e: any) {
-      this.log.warn(`La verificacion de BD fallo: ${e?.message ?? 'error desconocido'}`);
+      this.log.warn(`La verificación de BD fallo: ${e?.message ?? 'error desconocido'}`);
     }
     return {
       servicio: 'lis-dona-backend',

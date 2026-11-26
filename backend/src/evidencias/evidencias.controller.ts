@@ -1,3 +1,4 @@
+import { nombreArchivoSeguro } from '../common/seguridad-http';
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
@@ -7,7 +8,7 @@ import { MIMES_EVIDENCIA } from '../common/enums';
 import { EvidenciasService } from './evidencias.service';
 
 class SubirEvidenciaDto {
-  @IsIn(MIMES_EVIDENCIA, { message: 'Solo se aceptan imagenes JPEG, PNG o WebP.' })
+  @IsIn(MIMES_EVIDENCIA, { message: 'Solo se aceptan imágenes JPEG, PNG o WebP.' })
   mime: string;
 
   @IsString()
@@ -49,7 +50,7 @@ export class EvidenciasController {
     res.setHeader('Content-Type', archivo.mime);
     res.setHeader('Content-Length', archivo.contenido.length);
     res.setHeader('Cache-Control', 'private, max-age=300');
-    res.setHeader('Content-Disposition', `inline; filename="${archivo.nombre}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${nombreArchivoSeguro(archivo.nombre, 'foto')}"`); // S6
     res.end(archivo.contenido);
   }
 }

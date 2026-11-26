@@ -45,7 +45,7 @@ export class EvidenciasService {
     try {
       contenido = Buffer.from(limpio, 'base64');
     } catch {
-      throw new BadRequestException('El contenido de la imagen no es base64 valido.');
+      throw new BadRequestException('El contenido de la imagen no es base64 válido.');
     }
     if (!contenido.length) {
       throw new BadRequestException('La imagen esta vacia.');
@@ -54,7 +54,7 @@ export class EvidenciasService {
     const maximo = await this.parametros.maxBytesEvidencia();
     if (contenido.length > maximo) {
       throw new BadRequestException(
-        `La imagen pesa ${(contenido.length / 1024).toFixed(0)} KB y el maximo es ${(maximo / 1024).toFixed(0)} KB.`,
+        `La imagen pesa ${(contenido.length / 1024).toFixed(0)} KB y el máximo es ${(maximo / 1024).toFixed(0)} KB.`,
       );
     }
     if (!this.firmaValida(contenido, datos.mime)) {

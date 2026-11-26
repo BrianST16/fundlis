@@ -15,7 +15,7 @@ class RolDto {
 
 class BloqueoDto {
   @IsString()
-  @MinLength(5, { message: 'Indica el motivo del bloqueo (minimo 5 caracteres).' })
+  @MinLength(5, { message: 'Indica el motivo del bloqueo (mínimo 5 caracteres).' })
   @MaxLength(400)
   motivo: string;
 }
