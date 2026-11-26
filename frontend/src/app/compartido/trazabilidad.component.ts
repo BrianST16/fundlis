@@ -1,7 +1,7 @@
 import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 import { ApiService } from '../core/api.service';
 import { EventoTrazabilidad, Trazabilidad } from '../core/modelos';
-import { fecha, mensajeError } from '../core/utilidades';
+import { estadoLegible, fecha, mensajeError } from '../core/utilidades';
 import { FotoComponent } from './foto.component';
 
 type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
@@ -21,7 +21,7 @@ type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
       <section class="modal-panel" role="dialog" aria-label="Trazabilidad" (click)="$event.stopPropagation()">
         <header class="modal-cabecera">
           <div>
-            <strong>Trazabilidad &middot; Donacion #{{ ofertaId() }}</strong>
+            <strong>Trazabilidad &middot; Donación #{{ ofertaId() }}</strong>
             @if (datos(); as d) { <span class="dato"> &mdash; {{ d.oferta.producto }}</span> }
           </div>
           <button type="button" class="visor-cerrar oscuro" aria-label="Cerrar" (click)="cerrar.emit()">&times;</button>
@@ -32,7 +32,7 @@ type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
 
         @if (datos(); as d) {
           <p class="dato" style="margin:0 0 .4rem">
-            {{ d.oferta.categoria }} &middot; {{ d.oferta.cantidad }} u. &middot; estado <strong>{{ d.oferta.estado }}</strong>
+            {{ d.oferta.categoria }} &middot; {{ d.oferta.cantidad }} u. &middot; <strong>{{ legible(d.oferta.estado) }}</strong>
             @if (d.oferta.donador; as dn) { &middot; donador {{ dn.nombre }} ({{ dn.email }}) }
             @if (d.oferta.ofertaOrigenId) { &middot; generada por faltante de la #{{ d.oferta.ofertaOrigenId }} }
           </p>
@@ -41,7 +41,7 @@ type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
             <div class="fila" style="gap:.35rem; margin-bottom:.4rem">
               @for (a of d.asignaciones; track a.id) {
                 <span class="etiqueta gris" title="{{ a.estudiante ?? '' }}">
-                  #{{ a.id }} {{ a.estado }} &rarr; peticion #{{ a.peticionId }}
+                  #{{ a.id }} {{ legible(a.estado) }} &rarr; petición #{{ a.peticionId }}
                 </span>
               }
               @for (x of d.derivadas; track x.id) {
@@ -74,7 +74,7 @@ type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
                     @if (e.explicacion) { <p style="margin:0 0 .3rem">{{ e.explicacion }}</p> }
                     @if (e.contraparte) {
                       <p class="dato" style="margin:0 0 .3rem">
-                        {{ e.tipoMovimiento === 'RECEPCION' ? 'Entrego' : 'Recibio' }}: <strong>{{ e.contraparte }}</strong>
+                        {{ e.tipoMovimiento === 'RECEPCION' ? 'Entregó' : 'Recibió' }}: <strong>{{ e.contraparte }}</strong>
                         @if (e.cantidad) { &middot; {{ e.cantidad }} u. }
                       </p>
                     }
@@ -90,7 +90,7 @@ type Filtro = 'TODO' | 'ESTADO' | 'MOVIMIENTO' | 'FOTO';
 
           @if (d.oferta.fotoId) {
             <details style="margin-top:.6rem">
-              <summary class="dato">Foto de la publicacion</summary>
+              <summary class="dato">Foto de la publicación</summary>
               <div class="evento-foto"><lis-foto [evidenciaId]="d.oferta.fotoId" [alt]="d.oferta.producto" /></div>
             </details>
           }
@@ -110,11 +110,12 @@ export class TrazabilidadComponent {
   filtro = signal<Filtro>('TODO');
   abierto = signal<string | null>(null);
   f = fecha;
+  legible = estadoLegible;
 
   filtros: { valor: Filtro; texto: string }[] = [
     { valor: 'TODO', texto: 'Todo' },
     { valor: 'ESTADO', texto: 'Cambios de estado' },
-    { valor: 'MOVIMIENTO', texto: 'Movimientos fisicos' },
+    { valor: 'MOVIMIENTO', texto: 'Movimientos físicos' },
     { valor: 'FOTO', texto: 'Con foto' },
   ];
 
@@ -158,7 +159,7 @@ export class TrazabilidadComponent {
 
   titulo(e: EventoTrazabilidad): string {
     if (e.clase === 'MOVIMIENTO') {
-      const tipo = { RECEPCION: 'Recepcion fisica', ENTREGA: 'Entrega al estudiante', DEVOLUCION: 'Devolucion al donador' }[e.tipoMovimiento ?? ''] ?? e.tipoMovimiento;
+      const tipo = { RECEPCION: 'Recepción física', ENTREGA: 'Entrega al estudiante', DEVOLUCION: 'Devolución al donador' }[e.tipoMovimiento ?? ''] ?? e.tipoMovimiento;
       return `${tipo}${e.cantidad ? ` · ${e.cantidad} u.` : ''}`;
     }
     return e.estadoAnterior && e.estadoAnterior !== e.estadoNuevo

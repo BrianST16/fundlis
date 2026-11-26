@@ -65,31 +65,31 @@ export interface IntentoConFechas {
 const ACCIONES_DONADOR: AccionTarea[] = [
   {
     codigo: 'CANCELAR_INTENTO',
-    descripcion: 'Cancelar el intento: se liberan las unidades y la peticion vuelve con su fecha original (D-15).',
+    descripcion: 'Cancelar el intento: se liberan las unidades y la petición vuelve con su fecha original (D-15).',
     disponible: true,
   },
   {
     codigo: 'APLAZAR',
-    descripcion: 'Aplazar el plazo del donador tras contactarlo (+dias habiles configurables).',
+    descripcion: 'Aplazar el plazo del donador tras contactarlo (+días hábiles configurables).',
     disponible: true,
-    nota: 'Duracion y maximo son PROPUESTA configurable (P-07): PLAZO_APLAZAMIENTO_DONADOR_DIAS_HABILES, MAX_APLAZAMIENTOS_DONADOR.',
+    nota: 'Duracion y máximo son PROPUESTA configurable (P-07): PLAZO_APLAZAMIENTO_DONADOR_DIAS_HABILES, MAX_APLAZAMIENTOS_DONADOR.',
   },
 ];
 
 const ACCIONES_ESTUDIANTE: AccionTarea[] = [
   {
     codigo: 'EXTENDER',
-    descripcion: 'Extender 3 dias habiles el plazo de recogida (D-22).',
+    descripcion: 'Extender 3 días hábiles el plazo de recogida (D-22).',
     disponible: true,
   },
   {
     codigo: 'CANCELAR_INTENTO',
-    descripcion: 'Cancelar el intento (la peticion se cierra por incumplimiento, D-16). El lote queda sin destino para reasignarlo, enviarlo a custodia LOCAL o devolverlo.',
+    descripcion: 'Cancelar el intento (la petición se cierra por incumplimiento, D-16). El lote queda sin destino para reasignarlo, enviarlo a custodia Local o devolverlo.',
     disponible: true,
   },
   {
     codigo: 'DEVOLUCION',
-    descripcion: 'Iniciar la devolucion al donador u otro destino permitido.',
+    descripcion: 'Iniciar la devolución al donador u otro destino permitido.',
     disponible: true,
   },
 ];

@@ -44,19 +44,19 @@ describe('Festivos de Colombia (calculados)', () => {
   });
 });
 
-describe('Dias habiles del LIS', () => {
-  it('sabado, domingo y festivo no son habiles; un martes normal si', () => {
+describe('Días hábiles del LIS', () => {
+  it('sabado, domingo y festivo no son hábiles; un martes normal si', () => {
     expect(esHabil('2026-11-21')).toBe(false); // sabado
     expect(esHabil('2026-11-22')).toBe(false); // domingo
     expect(esHabil('2026-12-08')).toBe(false); // festivo (martes)
     expect(esHabil('2026-11-24')).toBe(true);
   });
 
-  it('10 dias habiles desde el viernes 20-nov-2026 vencen el viernes 4-dic', () => {
+  it('10 días hábiles desde el viernes 20-nov-2026 vencen el viernes 4-dic', () => {
     expect(sumarDiasHabiles('2026-11-20', 10)).toBe('2026-12-04');
   });
 
-  it('3 dias habiles desde el viernes 4-dic-2026 saltan el festivo del 8-dic', () => {
+  it('3 días hábiles desde el viernes 4-dic-2026 saltan el festivo del 8-dic', () => {
     expect(sumarDiasHabiles('2026-12-04', 3)).toBe('2026-12-10');
   });
 
@@ -64,13 +64,13 @@ describe('Dias habiles del LIS', () => {
     expect(sumarDiasHabiles('2026-12-31', 1)).toBe('2027-01-04');
   });
 
-  it('un cierre configurado del LIS no cuenta como dia habil', () => {
+  it('un cierre configurado del LIS no cuenta como dia hábil', () => {
     const cierres = [{ desde: '2026-11-30', hasta: '2026-12-02' }];
     expect(esHabil('2026-12-01', cierres)).toBe(false);
     expect(sumarDiasHabiles('2026-11-20', 10, cierres)).toBe('2026-12-10');
   });
 
-  it('dias habiles entre fechas, positivo y negativo', () => {
+  it('días hábiles entre fechas, positivo y negativo', () => {
     expect(diasHabilesEntre('2026-11-25', '2026-12-04')).toBe(7);
     expect(diasHabilesEntre('2026-12-04', '2026-12-04')).toBe(0);
     expect(diasHabilesEntre('2026-12-07', '2026-12-04')).toBe(-1);

@@ -32,6 +32,10 @@ export type DecisionTarea =
   | 'CUSTODIA_LOCAL'
   /** D-50: propuesta LOCAL sin respuesta del donador. */
   | 'RETIRAR_PROPUESTA'
+  /** D-60: esperar con fecha nueva (custodia Local, lote sin destino, devolucion pendiente). */
+  | 'ESPERAR'
+  /** D-62: devolucion no retirada; solo el administrador la recibe para el LIS. */
+  | 'RECIBIR_LIS'
   | 'SIN_ACCION';
 
 /** Tarea DEFINIR_ESTADO (D-23). Idempotente por clave. */

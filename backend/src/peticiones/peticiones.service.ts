@@ -75,9 +75,10 @@ export class PeticionesService {
    */
   async catalogo(categoriaId?: number) {
     const lista = await this.peticiones.find({
+      // D-64 (C2): las peticiones de cuentas bloqueadas quedan en pausa.
       where: categoriaId
-        ? { estado: EstadoPeticion.APROBADA, categoriaId }
-        : { estado: EstadoPeticion.APROBADA },
+        ? { estado: EstadoPeticion.APROBADA, categoriaId, estudiante: { activo: true } }
+        : { estado: EstadoPeticion.APROBADA, estudiante: { activo: true } },
       relations: { categoria: true },
       order: { creadaEn: 'ASC' },
     });
@@ -101,7 +102,7 @@ export class PeticionesService {
 
   async colaAprobacion() {
     const lista = await this.peticiones.find({
-      where: { estado: EstadoPeticion.PENDIENTE_APROBACION },
+      where: { estado: EstadoPeticion.PENDIENTE_APROBACION, estudiante: { activo: true } },
       relations: { categoria: true, estudiante: true },
       order: { creadaEn: 'ASC' },
     });
@@ -113,12 +114,12 @@ export class PeticionesService {
       where: { id },
       relations: { categoria: true, estudiante: true },
     });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
 
     const esDueno = p.estudianteId === solicitanteId;
     if (!esPersonalLis && !esDueno) {
       if (p.estado !== EstadoPeticion.APROBADA) {
-        throw new ForbiddenException('No puedes ver esta peticion.');
+        throw new ForbiddenException('No puedes ver esta petición.');
       }
       return this.aCatalogo(p);
     }
@@ -157,7 +158,7 @@ export class PeticionesService {
     });
     if (!caracterizacion) {
       throw new BadRequestException(
-        'Antes de crear una peticion debes completar tu caracterizacion y tu grupo Sisben.',
+        'Antes de crear una petición debes completar tu caracterización y tu grupo Sisbén.',
       );
     }
 
@@ -179,7 +180,7 @@ export class PeticionesService {
       });
       if (usadas >= maximo) {
         throw new BadRequestException(
-          `Ya tienes ${usadas} peticiones abiertas y el maximo es ${maximo}. Cierra o cancela una antes de crear otra.`,
+          `Ya tienes ${usadas} peticiones abiertas y el máximo es ${maximo}. Cierra o cancela una antes de crear otra.`,
         );
       }
 
@@ -202,7 +203,7 @@ export class PeticionesService {
           estadoAnterior: null,
           estadoNuevo: EstadoPeticion.PENDIENTE_APROBACION,
           actorId: estudianteId,
-          motivo: 'Peticion creada por el estudiante',
+          motivo: 'Petición creada por el estudiante',
         },
         mgr,
       );
@@ -225,13 +226,13 @@ export class PeticionesService {
     },
   ) {
     const p = await this.peticiones.findOne({ where: { id } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     if (p.estudianteId !== estudianteId) {
       throw new ForbiddenException('Solo puedes editar tus propias peticiones.');
     }
     if (p.estado !== EstadoPeticion.PENDIENTE_APROBACION) {
       throw new BadRequestException(
-        'Solo se puede editar una peticion que aun esta pendiente de aprobacion.',
+        'Solo se puede editar una petición que aun esta pendiente de aprobación.',
       );
     }
 
@@ -261,12 +262,12 @@ export class PeticionesService {
    *  siempre que no tenga una asignacion vigente. */
   async cancelar(id: number, estudianteId: number, motivo: string) {
     const p = await this.peticiones.findOne({ where: { id } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     if (p.estudianteId !== estudianteId) {
       throw new ForbiddenException('Solo puedes cancelar tus propias peticiones.');
     }
     if (![EstadoPeticion.PENDIENTE_APROBACION, EstadoPeticion.APROBADA].includes(p.estado)) {
-      throw new BadRequestException(`Una peticion en estado ${p.estado} no se puede cancelar.`);
+      throw new BadRequestException(`Una petición en estado ${p.estado} no se puede cancelar.`);
     }
 
     const vigente = await this.asignaciones.findOne({
@@ -274,7 +275,7 @@ export class PeticionesService {
     });
     if (vigente) {
       throw new BadRequestException(
-        'Tu peticion ya tiene una asignacion en curso. El personal del LIS debe resolverla antes de cancelar.',
+        'Tu petición ya tiene una asignación en curso. El personal del LIS debe resolverla antes de cancelar.',
       );
     }
 
@@ -298,14 +299,14 @@ export class PeticionesService {
 
   async aprobar(id: number, revisorId: number) {
     const p = await this.peticiones.findOne({ where: { id } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     if (p.estado !== EstadoPeticion.PENDIENTE_APROBACION) {
       throw new BadRequestException(
-        `Solo se aprueban peticiones pendientes. Esta esta en ${p.estado}.`,
+        `Solo se aprueban peticiones pendientes. Esta está en ${p.estado}.`,
       );
     }
     if (p.estudianteId === revisorId) {
-      throw new BadRequestException('No puedes aprobar tu propia peticion.');
+      throw new BadRequestException('No puedes aprobar tu propia petición.');
     }
 
     p.estado = EstadoPeticion.APROBADA;
@@ -324,8 +325,8 @@ export class PeticionesService {
     });
     await this.notificaciones?.aUsuarios([p.estudianteId], {
       tipo: 'PETICION_APROBADA',
-      titulo: 'Tu peticion fue aprobada',
-      mensaje: `Tu peticion "${p.descripcion.slice(0, 60)}" fue aprobada y entra al emparejamiento.`,
+      titulo: 'Tu petición fue aprobada',
+      mensaje: `Tu petición "${p.descripcion.slice(0, 60)}" fue aprobada y entra al emparejamiento.`,
       entidad: 'PETICION',
       entidadId: id,
       clave: `PETICION:${id}:APROBADA`,
@@ -336,10 +337,10 @@ export class PeticionesService {
 
   async rechazar(id: number, revisorId: number, motivo: string) {
     const p = await this.peticiones.findOne({ where: { id } });
-    if (!p) throw new NotFoundException('La peticion no existe.');
+    if (!p) throw new NotFoundException('La petición no existe.');
     if (p.estado !== EstadoPeticion.PENDIENTE_APROBACION) {
       throw new BadRequestException(
-        `Solo se rechazan peticiones pendientes. Esta esta en ${p.estado}.`,
+        `Solo se rechazan peticiones pendientes. Esta está en ${p.estado}.`,
       );
     }
 
@@ -360,8 +361,8 @@ export class PeticionesService {
     });
     await this.notificaciones?.aUsuarios([p.estudianteId], {
       tipo: 'PETICION_RECHAZADA',
-      titulo: 'Tu peticion no fue aprobada',
-      mensaje: `Tu peticion "${p.descripcion.slice(0, 60)}" no fue aprobada. Motivo: ${motivo}`,
+      titulo: 'Tu petición no fue aprobada',
+      mensaje: `Tu petición "${p.descripcion.slice(0, 60)}" no fue aprobada. Motivo: ${motivo}`,
       entidad: 'PETICION',
       entidadId: id,
       clave: `PETICION:${id}:RECHAZADA`,

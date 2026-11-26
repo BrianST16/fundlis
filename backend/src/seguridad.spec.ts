@@ -4,7 +4,7 @@
  */
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsuarioActual } from './auth/auth.types';
-import { EstadoOferta, Perfil, Rol } from './common/enums';
+import { EstadoOferta, EstadoPeticion, Perfil, Rol } from './common/enums';
 import { EvidenciasService } from './evidencias/evidencias.service';
 import { HealthController } from './health/health.controller';
 import { OfertasService } from './ofertas/ofertas.service';
@@ -96,7 +96,7 @@ describe('T1.2 OfertasService: validacion del fotoId', () => {
     expect(ofertas.save).not.toHaveBeenCalled();
   });
 
-  it('rechaza una foto que ya es evidencia de un movimiento fisico', async () => {
+  it('rechaza una foto que ya es evidencia de un movimiento físico', async () => {
     const { s } = servicio({ evidencia: { id: 9, subidaPor: 7 }, enMovimiento: 1 });
     await expect(s.crear(7, datos)).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -146,7 +146,7 @@ describe('T1.3 EvidenciasService.puedeVer', () => {
     await expect(servicio({ enMovimiento: 1 }).puedeVer(1, null)).resolves.toBe(false);
   });
 
-  it('foto de oferta APROBADA: publica (catalogo)', async () => {
+  it('foto de oferta APROBADA: publica (catálogo)', async () => {
     const s = servicio({ oferta: { estado: EstadoOferta.APROBADA, donadorId: 7 } });
     await expect(s.puedeVer(1, null)).resolves.toBe(true);
   });
@@ -190,25 +190,25 @@ describe('D-47 OfertasService: el auxiliar no revisa sus propias donaciones; el 
     return { s, ofertas, historial };
   }
 
-  it('auxiliar: 403 al aprobar su propia donacion y no cambia nada', async () => {
+  it('auxiliar: 403 al aprobar su propia donación y no cambia nada', async () => {
     const { s, ofertas } = servicio(1);
     await expect(s.aprobar(60, 1, false)).rejects.toBeInstanceOf(ForbiddenException);
     expect(ofertas.save).not.toHaveBeenCalled();
   });
 
-  it('auxiliar: 403 al rechazar su propia donacion (antes no se validaba)', async () => {
+  it('auxiliar: 403 al rechazar su propia donación (antes no se validaba)', async () => {
     const { s, ofertas } = servicio(1);
     await expect(s.rechazar(60, 1, 'motivo de prueba', false)).rejects.toBeInstanceOf(ForbiddenException);
     expect(ofertas.save).not.toHaveBeenCalled();
   });
 
-  it('auxiliar: si puede aprobar la donacion de otra persona', async () => {
+  it('auxiliar: si puede aprobar la donación de otra persona', async () => {
     const { s, ofertas } = servicio(7);
     await s.aprobar(60, 1, false);
     expect(ofertas.save).toHaveBeenCalledWith(expect.objectContaining({ estado: EstadoOferta.APROBADA }));
   });
 
-  it('administrador: si puede aprobar su propia donacion y queda marcado en el historial', async () => {
+  it('administrador: si puede aprobar su propia donación y queda marcado en el historial', async () => {
     const { s, ofertas, historial } = servicio(1);
     await s.aprobar(60, 1, true);
     expect(ofertas.save).toHaveBeenCalledWith(expect.objectContaining({ estado: EstadoOferta.APROBADA, revisadaPor: 1 }));
@@ -273,8 +273,10 @@ describe('D-45 UsuariosService: solo el superusuario gestiona ADMINISTRADOR', ()
     const historial: any = { registrar: jest.fn() };
     const dataSource: any = {
       transaction: jest.fn(async (cb: any) =>
-        cb({ getRepository: () => ({ create: (x: any) => x, save: jest.fn(), delete: jest.fn() }) }),
+        cb({ getRepository: () => ({ create: (x: any) => x, save: jest.fn(), delete: jest.fn(), find: jest.fn(async () => []) }) }),
       ),
+      // D-64 (C2): sin mediaciones en curso por defecto.
+      getRepository: () => ({ createQueryBuilder: () => consultaQueCuenta(0) }),
     };
     return { s: new UsuariosService(usuarios, roles, historial, dataSource), dataSource, usuarios };
   }
@@ -317,7 +319,8 @@ describe('D-45 UsuariosService: solo el superusuario gestiona ADMINISTRADOR', ()
 
     const sup = servicio([Rol.ADMINISTRADOR]);
     await sup.s.bloquear(3, 'motivo de prueba', 1, true);
-    expect(sup.usuarios.save).toHaveBeenCalled();
+    // D-64: el bloqueo se guarda dentro de una transaccion (con el cierre de publicaciones).
+    expect(sup.dataSource.transaction).toHaveBeenCalled();
   });
 
   it('un superusuario no se bloquea desde la API', async () => {
@@ -348,5 +351,66 @@ describe('T1.5 HealthController', () => {
     const ds: any = { query: jest.fn(async () => [{ '': 1 }]) };
     const r: any = await new HealthController(ds).estado();
     expect(r).toMatchObject({ estado: 'ok', baseDatos: 'conectada' });
+  });
+});
+
+/** QueryBuilder doble que devuelve un conteo fijo. */
+function consultaQueCuenta(n: number) {
+  const qb: any = {};
+  for (const m of ['leftJoin', 'innerJoin', 'where', 'andWhere']) qb[m] = () => qb;
+  qb.getCount = async () => n;
+  return qb;
+}
+
+// ---------------------------------------------------------------------------
+// D-64 (C2) — bloquear solo sin mediaciones en proceso; se cierran sus publicaciones
+// ---------------------------------------------------------------------------
+describe('D-64 UsuariosService.bloquear', () => {
+  function servicio(enCurso: number, abiertas: { ofertas?: any[]; peticiones?: any[] } = {}) {
+    const usuarios: any = {
+      findOne: jest.fn(async () => ({ id: 3, nombre: 'Ana Demo', perfil: Perfil.DONADOR, activo: true })),
+      save: jest.fn(),
+    };
+    const roles: any = { find: jest.fn(async () => []), findOne: jest.fn(async () => null), count: jest.fn(async () => 2) };
+    const historial: any = { registrar: jest.fn() };
+    const guardados: any[] = [];
+    const repos: Record<string, any> = {
+      Usuario: { save: jest.fn(async (x: any) => guardados.push(x)) },
+      Oferta: { find: jest.fn(async () => abiertas.ofertas ?? []), save: jest.fn(async (x: any) => guardados.push(x)) },
+      Peticion: { find: jest.fn(async () => abiertas.peticiones ?? []), save: jest.fn(async (x: any) => guardados.push(x)) },
+    };
+    const dataSource: any = {
+      transaction: jest.fn(async (cb: any) => cb({ getRepository: (e: any) => repos[e.name] })),
+      getRepository: () => ({ createQueryBuilder: () => consultaQueCuenta(enCurso) }),
+    };
+    return { s: new UsuariosService(usuarios, roles, historial, dataSource), dataSource, guardados, historial };
+  }
+
+  it('con una mediacion en proceso no bloquea y pide resolverla', async () => {
+    const { s, dataSource } = servicio(1);
+    await expect(s.bloquear(3, 'Uso indebido', 1)).rejects.toThrow('Resuélvelas antes de bloquear');
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('sin mediaciones: bloquea y cierra sus publicaciones (pendiente -> CANCELADA, aprobada -> CERRADA, petición -> CANCELADA)', async () => {
+    const { s, guardados, historial } = servicio(0, {
+      ofertas: [
+        { id: 10, estado: EstadoOferta.PENDIENTE_APROBACION },
+        { id: 11, estado: EstadoOferta.APROBADA },
+      ],
+      peticiones: [{ id: 20, estado: EstadoPeticion.APROBADA }],
+    });
+    (s as any).detalle = jest.fn(async () => ({ id: 3 }));
+    const r = await s.bloquear(3, 'Uso indebido', 1);
+    expect(r).toMatchObject({ cerradas: { ofertas: 2, peticiones: 1 } });
+    expect(guardados).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 3, activo: false }),
+        expect.objectContaining({ id: 10, estado: EstadoOferta.CANCELADA }),
+        expect.objectContaining({ id: 11, estado: EstadoOferta.CERRADA }),
+        expect.objectContaining({ id: 20, estado: EstadoPeticion.CANCELADA }),
+      ]),
+    );
+    expect(historial.registrar).toHaveBeenCalledWith(expect.objectContaining({ estadoNuevo: 'BLOQUEADO' }), expect.anything());
   });
 });

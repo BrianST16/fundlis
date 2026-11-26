@@ -5,10 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Like, Repository } from 'typeorm';
-import { EntidadHistorial, Perfil, Rol } from '../common/enums';
+import { DataSource, EntityManager, In, Like, Repository } from 'typeorm';
+import { ASIGNACION_VIGENTE, EntidadHistorial, EstadoAsignacion, EstadoOferta, EstadoPeticion, Perfil, Rol } from '../common/enums';
 import { HistorialService } from '../common/historial.service';
-import { Usuario, UsuarioRol } from '../entities';
+import { DestinoLocal, LoteFisico, Oferta, OfertaXPeticion, Peticion, Usuario, UsuarioRol } from '../entities';
 
 @Injectable()
 export class UsuariosService {
@@ -18,6 +18,85 @@ export class UsuariosService {
     private readonly historial: HistorialService,
     private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * D-64 (C2): mediaciones en proceso de una cuenta (como donador o estudiante):
+   * asignaciones vigentes, devoluciones con el producto aun en el LIS y
+   * destinos Local que esperan algo del donador.
+   */
+  async mediacionesEnCurso(usuarioId: number): Promise<{ asignaciones: number; devoluciones: number; local: number; total: number }> {
+    const [asignaciones, devoluciones, local] = await Promise.all([
+      this.dataSource
+        .getRepository(OfertaXPeticion)
+        .createQueryBuilder('x')
+        .leftJoin('x.oferta', 'o')
+        .leftJoin('x.peticion', 'p')
+        .where('x.estado IN (:...vigentes)', { vigentes: ASIGNACION_VIGENTE })
+        .andWhere('(o.donadorId = :u OR p.estudianteId = :u)', { u: usuarioId })
+        .getCount(),
+      this.dataSource
+        .getRepository(OfertaXPeticion)
+        .createQueryBuilder('x')
+        .innerJoin('x.oferta', 'o')
+        .innerJoin(LoteFisico, 'l', 'l.id = x.loteId')
+        .where('x.estado = :dev', { dev: EstadoAsignacion.DEVOLUCION })
+        .andWhere("l.ubicacion = 'EN_LIS'")
+        .andWhere('o.donadorId = :u', { u: usuarioId })
+        .getCount(),
+      this.dataSource
+        .getRepository(DestinoLocal)
+        .createQueryBuilder('d')
+        .innerJoin('d.oferta', 'o')
+        .where('d.estado IN (:...pendientes)', { pendientes: ['ESPERA_RECEPCION', 'PROPUESTO_DONADOR', 'POR_DEVOLVER'] })
+        .andWhere('o.donadorId = :u', { u: usuarioId })
+        .getCount(),
+    ]);
+    return { asignaciones, devoluciones, local, total: asignaciones + devoluciones + local };
+  }
+
+  /**
+   * D-64 (C2): al bloquear se cierran sus publicaciones abiertas. Ofertas:
+   * pendientes -> CANCELADA, aprobadas -> CERRADA. Peticiones abiertas ->
+   * CANCELADA (sin incumplimiento). Todo queda en el historial.
+   */
+  private async cerrarPublicacionesEn(
+    mgr: EntityManager,
+    usuarioId: number,
+    motivo: string,
+    actorId: number,
+  ): Promise<{ ofertas: number; peticiones: number }> {
+    const ahora = new Date();
+    const repoO = mgr.getRepository(Oferta);
+    const ofertas = await repoO.find({
+      where: { donadorId: usuarioId, estado: In([EstadoOferta.PENDIENTE_APROBACION, EstadoOferta.APROBADA]) },
+    });
+    for (const o of ofertas) {
+      const anterior = o.estado;
+      o.estado = anterior === EstadoOferta.PENDIENTE_APROBACION ? EstadoOferta.CANCELADA : EstadoOferta.CERRADA;
+      o.cerradaEn = ahora;
+      await repoO.save(o);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.OFERTA, entidadId: o.id, estadoAnterior: anterior, estadoNuevo: o.estado, actorId, motivo },
+        mgr,
+      );
+    }
+    const repoP = mgr.getRepository(Peticion);
+    const peticiones = await repoP.find({
+      where: { estudianteId: usuarioId, estado: In([EstadoPeticion.PENDIENTE_APROBACION, EstadoPeticion.APROBADA]) },
+    });
+    for (const p of peticiones) {
+      const anterior = p.estado;
+      p.estado = EstadoPeticion.CANCELADA;
+      p.cerradaEn = ahora;
+      p.motivoCierre = motivo.slice(0, 400);
+      await repoP.save(p);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.PETICION, entidadId: p.id, estadoAnterior: anterior, estadoNuevo: EstadoPeticion.CANCELADA, actorId, motivo },
+        mgr,
+      );
+    }
+    return { ofertas: ofertas.length, peticiones: peticiones.length };
+  }
 
   async listar(filtro?: string) {
     const where = filtro
@@ -121,7 +200,7 @@ export class UsuariosService {
       const total = await this.roles.count({ where: { rol: Rol.ADMINISTRADOR } });
       if (total <= 1) {
         throw new BadRequestException(
-          'No se puede revocar el ultimo administrador de la plataforma.',
+          'No se puede revocar el último administrador de la plataforma.',
         );
       }
     }
@@ -151,7 +230,7 @@ export class UsuariosService {
     if (usuarioId === actorId) {
       throw new BadRequestException('No puedes bloquear tu propia cuenta.');
     }
-    if (!u.activo) throw new BadRequestException('La cuenta ya esta bloqueada.');
+    if (!u.activo) throw new BadRequestException('La cuenta ya está bloqueada.');
 
     // D-45: bloquear equivale a quitar todos los permisos, asi que sigue
     // las mismas reglas que la gestion de roles.
@@ -168,28 +247,43 @@ export class UsuariosService {
     if (esAdmin) {
       const total = await this.roles.count({ where: { rol: Rol.ADMINISTRADOR } });
       if (total <= 1) {
-        throw new BadRequestException('No se puede bloquear al ultimo administrador.');
+        throw new BadRequestException('No se puede bloquear al último administrador.');
       }
     }
 
-    u.activo = false;
-    u.motivoBloqueo = motivo;
-    await this.usuarios.save(u);
-    await this.historial.registrar({
-      entidad: EntidadHistorial.USUARIO,
-      entidadId: usuarioId,
-      estadoAnterior: 'ACTIVO',
-      estadoNuevo: 'BLOQUEADO',
-      actorId,
-      motivo,
+    // D-64 (C2): no se bloquea a quien tiene una mediacion en proceso; primero
+    // hay que resolverla (asi nada queda a medias con una cuenta bloqueada).
+    const enCurso = await this.mediacionesEnCurso(usuarioId);
+    if (enCurso.total > 0) {
+      const partes = [
+        enCurso.asignaciones ? `${enCurso.asignaciones} asignación(es) en curso` : '',
+        enCurso.devoluciones ? `${enCurso.devoluciones} devolución(es) pendiente(s)` : '',
+        enCurso.local ? `${enCurso.local} destino(s) Local pendiente(s) con el donador` : '',
+      ].filter(Boolean);
+      throw new BadRequestException(
+        `${u.nombre} tiene ${partes.join(', ')}. Resuélvelas antes de bloquear la cuenta ` +
+          '(Entregas y plazos, Local y lotes).',
+      );
+    }
+
+    // Bloqueo y cierre de sus publicaciones, todo o nada.
+    const cerradas = await this.dataSource.transaction(async (mgr) => {
+      u.activo = false;
+      u.motivoBloqueo = motivo;
+      await mgr.getRepository(Usuario).save(u);
+      await this.historial.registrar(
+        { entidad: EntidadHistorial.USUARIO, entidadId: usuarioId, estadoAnterior: 'ACTIVO', estadoNuevo: 'BLOQUEADO', actorId, motivo },
+        mgr,
+      );
+      return this.cerrarPublicacionesEn(mgr, usuarioId, `Cerrada por bloqueo de la cuenta: ${motivo}`, actorId);
     });
-    return this.detalle(usuarioId);
+    return { ...(await this.detalle(usuarioId)), cerradas };
   }
 
   async desbloquear(usuarioId: number, actorId: number, actorEsSuperusuario = false) {
     const u = await this.usuarios.findOne({ where: { id: usuarioId } });
     if (!u) throw new NotFoundException('El usuario no existe.');
-    if (u.activo) throw new BadRequestException('La cuenta ya esta activa.');
+    if (u.activo) throw new BadRequestException('La cuenta ya está activa.');
 
     // Simetrico con bloquear: un administrador no deshace el bloqueo que un
     // superusuario aplico a otro administrador.

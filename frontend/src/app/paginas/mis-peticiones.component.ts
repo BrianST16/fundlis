@@ -1,26 +1,26 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { SeguimientoComponent } from '../compartido/seguimiento.component';
 import { ApiService } from '../core/api.service';
-import { Categoria, PeticionVista } from '../core/modelos';
+import { Categoria, MiAsignacion, MiPlazo, PeticionVista } from '../core/modelos';
 import { fecha, mensajeError } from '../core/utilidades';
 
 @Component({
   selector: 'lis-mis-peticiones',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, SeguimientoComponent],
   template: `
     <h1>Mis peticiones</h1>
     <p class="subtitulo">
-      Registra lo que necesitas. El personal del LIS revisa cada peticion antes de publicarla
-      de forma anonima en el catalogo.
+      Registra lo que necesitas. Al aprobarse, aparece en el catálogo sin tus datos.
     </p>
 
     @if (cupo(); as c) {
       <div class="aviso" [class.info]="c.usadas < c.maximo" [class.error]="c.usadas >= c.maximo">
         Tienes {{ c.usadas }} de {{ c.maximo }} peticiones abiertas.
         @if (c.usadas >= c.maximo) {
-          Cierra o cancela una para poder crear otra.
+          Cancela una para crear otra.
         }
       </div>
     }
@@ -30,39 +30,39 @@ import { fecha, mensajeError } from '../core/utilidades';
 
     @if (caracterizada() === false) {
       <div class="aviso error">
-        La caracterizacion es obligatoria para registrar peticiones: de ella sale tu prioridad.
-        <a routerLink="/caracterizacion">Completar mi caracterizacion</a>
+        Completa tu caracterización para registrar peticiones.
+        <a routerLink="/caracterizacion">Completar mi caracterización</a>
       </div>
     }
 
     <div class="tarjeta">
-      <strong>Nueva peticion</strong>
-      <label>Categoria</label>
+      <strong>Nueva petición</strong>
+      <label>Categoría</label>
       <select [value]="categoriaId()" (change)="categoriaId.set($any($event.target).value)">
-        <option value="">Selecciona una categoria</option>
+        <option value="">Selecciona una categoría</option>
         @for (c of categorias(); track c.id) {
           <option [value]="c.id">{{ c.nombre }}</option>
         }
       </select>
 
-      <label>Que necesitas y para que</label>
+      <label>¿Qué necesitas y para qué?</label>
       <textarea
         [value]="descripcion()"
         (input)="descripcion.set($any($event.target).value)"
-        placeholder="Ejemplo: necesito una calculadora cientifica para el curso de calculo."
+        placeholder="Ejemplo: necesito una calculadora científica para el curso de cálculo."
       ></textarea>
 
       <div class="fila" style="margin-top:.75rem">
         <button [disabled]="!puedeCrear() || enviando()" (click)="crear()">
-          {{ enviando() ? 'Enviando...' : 'Registrar peticion' }}
+          {{ enviando() ? 'Enviando...' : 'Registrar petición' }}
         </button>
-        <a routerLink="/caracterizacion" class="dato">Revisar mi caracterizacion</a>
+        <a routerLink="/caracterizacion" class="dato">Revisar mi caracterización</a>
       </div>
     </div>
 
     <h2>Historial ({{ peticiones().length }})</h2>
     @if (!peticiones().length) {
-      <p class="vacio">Todavia no has registrado peticiones.</p>
+      <p class="vacio">Todavía no has registrado peticiones.</p>
     }
     @for (p of peticiones(); track p.id) {
       <div class="tarjeta">
@@ -81,16 +81,12 @@ import { fecha, mensajeError } from '../core/utilidades';
         @if (p.motivoCierre) {
           <p class="dato">Cierre: <strong>{{ p.motivoCierre }}</strong></p>
         }
-        @if (p.asignacionVigente; as a) {
-          <p class="dato">
-            Asignacion #{{ a.id }}: {{ a.cantidadAsignada }} unidades en estado
-            <strong>{{ legible(a.estado) }}</strong>
-          </p>
-        }
+        <!-- Seguimiento: asignacion vigente e intentos anteriores (antes "Mis movimientos"). -->
+        <lis-seguimiento [asignaciones]="asignacionesDe(p.id)" [plazos]="plazos()" />
 
         @if (p.estado === 'PENDIENTE_APROBACION' || p.estado === 'APROBADA') {
           <div class="fila" style="margin-top:.6rem">
-            <button class="peligro pequeno" (click)="cancelar(p)">Cancelar peticion</button>
+            <button class="peligro pequeno" (click)="cancelar(p)">Cancelar petición</button>
           </div>
         }
       </div>
@@ -127,6 +123,22 @@ export class MisPeticionesComponent implements OnInit {
       error: (e) => this.error.set(mensajeError(e)),
     });
     this.api.miCupo().subscribe({ next: (c) => this.cupo.set(c) });
+    this.api.misAsignaciones().subscribe({
+      next: (a) => this.asignaciones.set(a),
+      error: () => this.asignaciones.set([]),
+    });
+    this.api.misPlazos().subscribe({
+      next: (l) => this.plazos.set(new Map(l.map((x) => [x.asignacionId, x]))),
+      error: () => this.plazos.set(new Map()), // no debe ocultar la lista principal
+    });
+  }
+
+  /** Asignaciones propias y sus plazos (dias habiles), para el seguimiento. */
+  asignaciones = signal<MiAsignacion[]>([]);
+  plazos = signal<Map<number, MiPlazo>>(new Map());
+
+  asignacionesDe(peticionId: number): MiAsignacion[] {
+    return this.asignaciones().filter((a) => a.peticionId === peticionId);
   }
 
   puedeCrear(): boolean {
@@ -147,25 +159,25 @@ export class MisPeticionesComponent implements OnInit {
       })
       .subscribe({
         next: () => {
-          this.mensaje.set('Peticion registrada. Queda pendiente de aprobacion del LIS.');
+          this.mensaje.set('Petición registrada. Queda pendiente de aprobación del LIS.');
           this.descripcion.set('');
           this.categoriaId.set('');
           this.enviando.set(false);
           this.cargar();
         },
         error: (e) => {
-          this.error.set(mensajeError(e, 'No se pudo registrar la peticion.'));
+          this.error.set(mensajeError(e, 'No se pudo registrar la petición.'));
           this.enviando.set(false);
         },
       });
   }
 
   cancelar(p: PeticionVista): void {
-    const motivo = prompt('Motivo de la cancelacion (minimo 5 caracteres):');
+    const motivo = prompt('Motivo de la cancelación (mínimo 5 caracteres):');
     if (!motivo || motivo.trim().length < 5) return;
     this.api.cancelarPeticion(p.id, motivo.trim()).subscribe({
       next: () => {
-        this.mensaje.set(`Peticion #${p.id} cancelada.`);
+        this.mensaje.set(`Petición #${p.id} cancelada.`);
         this.cargar();
       },
       error: (e) => this.error.set(mensajeError(e, 'No se pudo cancelar.')),
@@ -178,7 +190,7 @@ export class MisPeticionesComponent implements OnInit {
 
   legible(estado?: string): string {
     const mapa: Record<string, string> = {
-      PENDIENTE_APROBACION: 'Pendiente de aprobacion',
+      PENDIENTE_APROBACION: 'Pendiente de aprobación',
       APROBADA: 'Aprobada',
       RECHAZADA: 'Rechazada',
       CANCELADA: 'Cancelada',
@@ -187,7 +199,7 @@ export class MisPeticionesComponent implements OnInit {
       ASIGNADO: 'Asignado',
       EN_CUSTODIA: 'En custodia del LIS',
       ENTREGADO: 'Entregado',
-      DEVOLUCION: 'En devolucion',
+      DEVOLUCION: 'En devolución',
       CANCELADO: 'Cancelado',
     };
     return mapa[estado ?? ''] ?? estado ?? '-';

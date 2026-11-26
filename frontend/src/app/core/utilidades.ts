@@ -59,10 +59,40 @@ export function abrirBlob(blob: Blob, nombre = 'archivo'): void {
 }
 
 /** Mensaje legible a partir de un error HTTP de Nest. */
-export function mensajeError(e: any, porDefecto = 'Ocurrio un error.'): string {
+/**
+ * Codigos internos (estados, roles, decisiones) -> palabras para la pantalla.
+ * Se usa en los mensajes del servidor y en la bandeja, para que nunca se vea
+ * un codigo como EN_CUSTODIA o DEFINIR_ESTADO.
+ */
+const TERMINOS: Record<string, string> = {
+  DEFINIR_ESTADO: 'decisión pendiente',
+  ASIGNADO: 'asignada', EN_CUSTODIA: 'en custodia', ENTREGADO: 'entregada', DEVOLUCION: 'en devolución', CANCELADO: 'cancelada',
+  PENDIENTE_APROBACION: 'pendiente de aprobación', APROBADA: 'aprobada', RECHAZADA: 'rechazada', CANCELADA: 'cancelada',
+  CERRADA: 'cerrada', CERRADA_ENTREGA: 'cerrada por entrega', CERRADA_INCUMPLIMIENTO: 'cerrada por incumplimiento',
+  ESPERA_RECEPCION: 'en espera de recepción', CUSTODIA_TEMPORAL: 'en custodia temporal', PROPUESTO_DONADOR: 'propuesta al donador',
+  POR_DEVOLVER: 'por devolver', ACEPTADO: 'aceptado por el LIS', REASIGNADO: 'emparejado', DEVUELTO: 'devuelto',
+  EN_LIS: 'en el LIS', PATRIMONIO_LIS: 'del LIS',
+  AUXILIAR_LIS: 'auxiliar', ADMINISTRADOR: 'administrador', SUPERUSUARIO: 'superusuario', ESTUDIANTE: 'estudiante', DONADOR: 'donador',
+  APLAZAR: 'dar más tiempo', EXTENDER: 'dar más tiempo', ESPERAR: 'esperar', REASIGNAR: 'reasignar', RECIBIR_LIS: 'recibir para el LIS',
+  CUSTODIA_LOCAL: 'custodia Local', SIN_ACCION: 'sin acción', RETIRAR_PROPUESTA: 'retirar la propuesta', CANCELAR_INTENTO: 'cancelar',
+  PENDIENTE: 'pendiente', VALIDADO: 'validado', RECHAZADO: 'rechazado', LOCAL: 'Local',
+};
+
+/** Reemplaza los codigos internos de un texto por palabras. */
+export function textoLegible(texto: string | null | undefined): string {
+  return (texto ?? '').replace(/\b[A-Z][A-Z_]{3,}\b/g, (w) => TERMINOS[w] ?? w);
+}
+
+/** Un codigo suelto, con mayuscula inicial (para etiquetas). */
+export function estadoLegible(codigo: string | null | undefined): string {
+  const t = textoLegible(codigo);
+  return t ? t[0].toUpperCase() + t.slice(1) : '';
+}
+
+export function mensajeError(e: any, porDefecto = 'Ocurrió un error.'): string {
   const m = e?.error?.message;
-  if (Array.isArray(m)) return m.join(' ');
-  return m ?? e?.message ?? porDefecto;
+  if (Array.isArray(m)) return textoLegible(m.join(' '));
+  return textoLegible(m ?? e?.message ?? porDefecto);
 }
 
 export function fecha(valor: string | null | undefined): string {

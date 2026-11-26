@@ -26,7 +26,7 @@ export class RolesGuard implements CanActivate {
     if (!rolesRequeridos?.length && !perfilesRequeridos?.length) return true;
 
     const usuario: UsuarioActual = ctx.switchToHttp().getRequest().usuario;
-    if (!usuario) throw new ForbiddenException('Se requiere iniciar sesion.');
+    if (!usuario) throw new ForbiddenException('Se requiere iniciar sesión.');
 
     if (rolesRequeridos?.length) {
       // esAdministrador ya incluye al SUPERUSUARIO (ver JwtGuard).
@@ -37,13 +37,13 @@ export class RolesGuard implements CanActivate {
           (r === Rol.ADMINISTRADOR && usuario.esAdministrador),
       );
       if (!tiene) {
-        throw new ForbiddenException('Tu rol no permite esta operacion.');
+        throw new ForbiddenException('Tu rol no permite esta operación.');
       }
     }
 
     if (perfilesRequeridos?.length && !perfilesRequeridos.includes(usuario.perfil)) {
       throw new ForbiddenException(
-        `Esta operacion es solo para el perfil ${perfilesRequeridos.join(' o ')}.`,
+        `Esta operación es solo para el perfil ${perfilesRequeridos.join(' o ')}.`,
       );
     }
 

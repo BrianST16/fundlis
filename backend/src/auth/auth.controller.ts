@@ -6,7 +6,7 @@ import { UsuarioActual } from './auth.types';
 
 class LoginGoogleDto {
   @IsString()
-  @MinLength(20, { message: 'El credential de Google no parece valido.' })
+  @MinLength(20, { message: 'El credential de Google no parece válido.' })
   credential: string;
 }
 
@@ -33,6 +33,6 @@ export class AuthController {
   @Post('salir')
   @HttpCode(200)
   salir() {
-    return { mensaje: 'Sesion cerrada. Descarta el token en el cliente.' };
+    return { mensaje: 'Sesión cerrada. Descarta el token en el cliente.' };
   }
 }

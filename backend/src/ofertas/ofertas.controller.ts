@@ -22,7 +22,7 @@ class CrearOfertaDto {
   fotoId?: number;
 
   /** Compatibilidad (D-41): 1 deteriorado ... 5 nuevo. */
-  @IsInt() @Min(1) @Max(5, { message: 'El estado de conservacion va de 1 (deteriorado) a 5 (nuevo).' })
+  @IsInt() @Min(1) @Max(5, { message: 'El estado de conservación va de 1 (deteriorado) a 5 (nuevo).' })
   estadoConservacion: number;
 
   /** Medida de la categoria (p. ej. talla), si la categoria la usa. */

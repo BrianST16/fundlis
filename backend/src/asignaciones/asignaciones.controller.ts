@@ -9,11 +9,13 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Actual, Roles } from '../auth/decoradores';
 import { UsuarioActual } from '../auth/auth.types';
 import { EstadoAsignacion, MIMES_EVIDENCIA, Rol } from '../common/enums';
+import { CausaCancelacion, MOTIVO_NO_RECOGIO } from './asignaciones.service';
 import { AsignacionesService } from './asignaciones.service';
 
 class FotoDto {
@@ -57,6 +59,19 @@ class AsignarDto {
 class MotivoDto {
   @IsString() @MinLength(5) @MaxLength(400)
   motivo: string;
+}
+
+/** D-57: al cancelar un producto EN_CUSTODIA se indica si fue culpa del estudiante. */
+export class CancelarDto {
+  @IsOptional()
+  @IsIn(['ESTUDIANTE_NO_RECOGIO', 'OTRO'], { message: 'causa debe ser ESTUDIANTE_NO_RECOGIO u OTRO.' })
+  causa?: CausaCancelacion;
+
+  /** Obligatorio, salvo cuando la causa es "el estudiante no recogio" (D-57):
+   *  esa causa ya explica el cierre y se registra con un texto por defecto. */
+  @ValidateIf((o: CancelarDto) => o.causa !== 'ESTUDIANTE_NO_RECOGIO' || !!o.motivo?.trim())
+  @IsString() @MinLength(5) @MaxLength(400)
+  motivo?: string;
 }
 
 class DesdeLoteDto {
@@ -159,10 +174,11 @@ export class AsignacionesController {
   @Post(':id/cancelar')
   cancelar(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: MotivoDto,
+    @Body() dto: CancelarDto,
     @Actual() actual: UsuarioActual,
   ) {
-    return this.servicio.cancelar(id, dto.motivo, actual.sub);
+    const motivo = dto.motivo?.trim() || MOTIVO_NO_RECOGIO;
+    return this.servicio.cancelar(id, motivo, actual.sub, undefined, { causa: dto.causa });
   }
 
   @Roles(Rol.AUXILIAR_LIS)

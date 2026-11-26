@@ -77,20 +77,20 @@ export class CaracterizacionService {
     datos: { grupoSisben: string; respuestas: RespuestaEntrada[] },
   ) {
     const grupo = await this.sisben.findOne({ where: { codigo: datos.grupoSisben } });
-    if (!grupo) throw new BadRequestException('El grupo Sisben indicado no existe.');
+    if (!grupo) throw new BadRequestException('El grupo Sisbén indicado no existe.');
 
     const preguntasActivas = await this.preguntas.find({
       where: { activa: true },
       order: { orden: 'ASC' },
     });
     if (!preguntasActivas.length) {
-      throw new BadRequestException('No hay preguntas de caracterizacion configuradas.');
+      throw new BadRequestException('No hay preguntas de caracterización configuradas.');
     }
 
     const idsEsperados = new Set(preguntasActivas.map((p) => p.id));
     const idsRecibidos = new Set(datos.respuestas.map((r) => r.preguntaId));
     if (idsRecibidos.size !== datos.respuestas.length) {
-      throw new BadRequestException('Hay preguntas respondidas mas de una vez.');
+      throw new BadRequestException('Hay preguntas respondidas más de una vez.');
     }
     for (const id of idsEsperados) {
       if (!idsRecibidos.has(id)) {
@@ -99,7 +99,7 @@ export class CaracterizacionService {
     }
     for (const id of idsRecibidos) {
       if (!idsEsperados.has(id)) {
-        throw new BadRequestException('Se envio una pregunta que no esta activa.');
+        throw new BadRequestException('Se envio una pregunta que no está activa.');
       }
     }
 
@@ -112,7 +112,7 @@ export class CaracterizacionService {
       const opcion = porId.get(r.opcionId);
       if (!opcion || opcion.preguntaId !== r.preguntaId) {
         throw new BadRequestException(
-          `La opcion ${r.opcionId} no corresponde a la pregunta ${r.preguntaId}.`,
+          `La opción ${r.opcionId} no corresponde a la pregunta ${r.preguntaId}.`,
         );
       }
       const pregunta = preguntasActivas.find((p) => p.id === r.preguntaId);
@@ -162,7 +162,7 @@ export class CaracterizacionService {
       where: { usuarioId },
       relations: { respuestas: true, sisben: true, usuario: true },
     });
-    if (!c) throw new NotFoundException('El estudiante no tiene caracterizacion registrada.');
+    if (!c) throw new NotFoundException('El estudiante no tiene caracterización registrada.');
 
     const preguntas = await this.preguntas.find({ relations: { opciones: true } });
     const textoPregunta = new Map(preguntas.map((p) => [p.id, p.texto]));
@@ -179,7 +179,7 @@ export class CaracterizacionService {
       actualizadaEn: c.actualizadaEn,
       respuestas: (c.respuestas ?? []).map((r) => ({
         pregunta: textoPregunta.get(r.preguntaId) ?? `Pregunta ${r.preguntaId}`,
-        respuesta: textoOpcion.get(r.opcionId) ?? `Opcion ${r.opcionId}`,
+        respuesta: textoOpcion.get(r.opcionId) ?? `Opción ${r.opcionId}`,
       })),
     };
   }

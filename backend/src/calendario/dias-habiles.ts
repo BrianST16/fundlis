@@ -48,7 +48,7 @@ export function sumarDiasHabiles(desde: FechaCivil, n: number, cierres: RangoCie
   // Tope defensivo: un cierre mal configurado (p. ej. de anios) no debe
   // dejar el proceso en un bucle infinito.
   for (let guardia = 0; contados < n; guardia++) {
-    if (guardia > 3660) throw new Error('No se encontraron dias habiles en 10 anios: revisa los cierres.');
+    if (guardia > 3660) throw new Error('No se encontraron días hábiles en 10 anios: revisa los cierres.');
     d = sumarDias(d, 1);
     if (esHabil(aCivil(d), cierres)) contados++;
   }
@@ -61,7 +61,7 @@ export function restarDiasHabiles(hasta: FechaCivil, n: number, cierres: RangoCi
   let d = desdeCivil(hasta);
   let contados = 0;
   for (let guardia = 0; contados < n; guardia++) {
-    if (guardia > 3660) throw new Error('No se encontraron dias habiles en 10 anios: revisa los cierres.');
+    if (guardia > 3660) throw new Error('No se encontraron días hábiles en 10 anios: revisa los cierres.');
     d = sumarDias(d, -1);
     if (esHabil(aCivil(d), cierres)) contados++;
   }

@@ -44,11 +44,6 @@ class DesdeLoteDto extends MotivoDto {
   loteId: number;
 }
 
-class ReasignarDto {
-  @IsInt() @IsPositive()
-  peticionId: number;
-}
-
 class RespuestaDonadorDto {
   @IsBoolean({ message: 'Indica si aceptas (true) o rechazas (false).' })
   acepta: boolean;
@@ -126,10 +121,6 @@ export class LocalController {
     return this.servicio.devolver(id, dto, a.sub);
   }
 
-  @Post(':id/reasignar')
-  reasignar(@Param('id', ParseIntPipe) id: number, @Body() dto: ReasignarDto, @Actual() a: UsuarioActual) {
-    return this.servicio.reasignar(id, dto.peticionId, a.sub);
-  }
 }
 
 /**

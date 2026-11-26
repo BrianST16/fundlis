@@ -18,8 +18,8 @@ export class CategoriasService {
 
   async obtenerActiva(id: number): Promise<Categoria> {
     const c = await this.repo.findOne({ where: { id } });
-    if (!c) throw new NotFoundException('La categoria no existe.');
-    if (!c.activa) throw new BadRequestException('La categoria esta inactiva.');
+    if (!c) throw new NotFoundException('La categoría no existe.');
+    if (!c.activa) throw new BadRequestException('La categoría esta inactiva.');
     return c;
   }
 
@@ -31,7 +31,7 @@ export class CategoriasService {
   validarMedidaOferta(c: Categoria, medida: number | null | undefined): number | null {
     if (c.medidaNombre === null || c.medidaNombre === undefined) {
       if (medida !== null && medida !== undefined) {
-        throw new BadRequestException(`La categoria "${c.nombre}" no usa medida.`);
+        throw new BadRequestException(`La categoría "${c.nombre}" no usa medida.`);
       }
       return null;
     }
@@ -49,7 +49,7 @@ export class CategoriasService {
     const a = min ?? null;
     const b = max ?? null;
     if (c.medidaNombre === null || c.medidaNombre === undefined) {
-      if (a !== null || b !== null) throw new BadRequestException(`La categoria "${c.nombre}" no usa medida.`);
+      if (a !== null || b !== null) throw new BadRequestException(`La categoría "${c.nombre}" no usa medida.`);
       return { min: null, max: null };
     }
     for (const v of [a, b]) {
@@ -57,13 +57,13 @@ export class CategoriasService {
         throw new BadRequestException(`${c.medidaNombre} debe estar entre ${c.medidaMin} y ${c.medidaMax}.`);
       }
     }
-    if (a !== null && b !== null && a > b) throw new BadRequestException('El minimo de la medida no puede superar el maximo.');
+    if (a !== null && b !== null && a > b) throw new BadRequestException('El mínimo de la medida no puede superar el máximo.');
     return { min: a, max: b };
   }
 
   async crear(datos: { nombre: string; descripcion?: string }) {
     const repetida = await this.repo.findOne({ where: { nombre: datos.nombre } });
-    if (repetida) throw new BadRequestException('Ya existe una categoria con ese nombre.');
+    if (repetida) throw new BadRequestException('Ya existe una categoría con ese nombre.');
     return this.repo.save(
       this.repo.create({
         nombre: datos.nombre,
@@ -79,7 +79,7 @@ export class CategoriasService {
     datos: { medidaNombre: string | null; medidaUnidad?: string | null; medidaMin?: number | null; medidaMax?: number | null },
   ) {
     const c = await this.repo.findOne({ where: { id } });
-    if (!c) throw new NotFoundException('La categoria no existe.');
+    if (!c) throw new NotFoundException('La categoría no existe.');
     if (!datos.medidaNombre) {
       c.medidaNombre = null;
       c.medidaUnidad = null;
@@ -87,7 +87,7 @@ export class CategoriasService {
       c.medidaMax = null;
     } else {
       if (datos.medidaMin === null || datos.medidaMin === undefined || datos.medidaMax === null || datos.medidaMax === undefined || datos.medidaMin >= datos.medidaMax) {
-        throw new BadRequestException('La medida necesita un minimo menor que el maximo.');
+        throw new BadRequestException('La medida necesita un mínimo menor que el máximo.');
       }
       c.medidaNombre = datos.medidaNombre;
       c.medidaUnidad = datos.medidaUnidad ?? null;
@@ -99,10 +99,10 @@ export class CategoriasService {
 
   async actualizar(id: number, datos: { nombre?: string; descripcion?: string; activa?: boolean }) {
     const c = await this.repo.findOne({ where: { id } });
-    if (!c) throw new NotFoundException('La categoria no existe.');
+    if (!c) throw new NotFoundException('La categoría no existe.');
     if (datos.nombre && datos.nombre !== c.nombre) {
       const repetida = await this.repo.findOne({ where: { nombre: datos.nombre } });
-      if (repetida) throw new BadRequestException('Ya existe una categoria con ese nombre.');
+      if (repetida) throw new BadRequestException('Ya existe una categoría con ese nombre.');
       c.nombre = datos.nombre;
     }
     if (datos.descripcion !== undefined) c.descripcion = datos.descripcion;

@@ -32,6 +32,8 @@ export const ESTADOS_CONSERVACION: { valor: number; texto: string }[] = [
 
 export interface OfertaCatalogo {
   id: number;
+  /** D-64 (C3): solo en "Mis donaciones"; el servidor dice si aun se puede cancelar. */
+  puedeCancelar?: boolean;
   nombreProducto: string;
   descripcion: string;
   categoria: { id: number; nombre: string | null };
@@ -138,6 +140,8 @@ export interface ResultadoEmparejamiento {
   oferta: {
     id: number;
     nombreProducto: string;
+    descripcion: string | null;
+    fotoId: number | null;
     categoriaId: number;
     categoria: string | null;
     estadoConservacion: number;
@@ -275,7 +279,7 @@ export interface Trazabilidad {
   eventos: EventoTrazabilidad[];
 }
 
-export type DecisionTarea = 'APLAZAR' | 'CANCELAR_INTENTO' | 'EXTENDER' | 'REASIGNAR' | 'DEVOLUCION' | 'CUSTODIA_LOCAL' | 'RETIRAR_PROPUESTA' | 'SIN_ACCION';
+export type DecisionTarea = 'APLAZAR' | 'CANCELAR_INTENTO' | 'EXTENDER' | 'REASIGNAR' | 'DEVOLUCION' | 'CUSTODIA_LOCAL' | 'RETIRAR_PROPUESTA' | 'ESPERAR' | 'RECIBIR_LIS' | 'SIN_ACCION';
 
 export interface TareaDefinirEstado {
   id: number;
@@ -290,6 +294,11 @@ export interface TareaDefinirEstado {
   creadaEn: string;
   decision: DecisionTarea | null;
   motivo: string | null;
+  /** D-58: solo en tareas de asignaciones abiertas. */
+  prorroga?: { dias: number; restantes: number };
+  /** D-60/D-61: custodia Local, lote sin destino, devolucion pendiente (con tope)
+   *  y propuesta sin respuesta (restantes = null: sin tope). */
+  espera?: { dias: number; restantes: number | null };
 }
 
 export interface AsignacionResumen {
@@ -320,6 +329,9 @@ export interface MiAsignacion {
   entregadaEn: string | null;
   motivoCierre: string | null;
   miPapel: 'DONADOR' | 'ESTUDIANTE';
+  /** Solo el del objeto propio: ofertaId si dono, peticionId si recibe. */
+  ofertaId: number | null;
+  peticionId: number | null;
 }
 
 export interface UsuarioAdmin {
@@ -343,13 +355,6 @@ export interface FotoEnviable {
 // --- Pilar B: plazos y tarea DEFINIR_ESTADO ---
 export type EstadoPlazo = 'EN_PLAZO' | 'POR_VENCER' | 'VENCIDO';
 
-export interface AccionTarea {
-  codigo: string;
-  descripcion: string;
-  disponible: boolean;
-  nota?: string;
-}
-
 export interface Plazo {
   responsable: 'DONADOR' | 'ESTUDIANTE';
   evento: 'ENTREGA_EN_LIS' | 'RECOGIDA_EN_LIS';
@@ -359,7 +364,6 @@ export interface Plazo {
   diasHabilesRestantes: number;
   estado: EstadoPlazo;
   tarea: 'DEFINIR_ESTADO' | null;
-  acciones: AccionTarea[];
 }
 
 export interface ItemBandejaPlazos {
@@ -371,13 +375,6 @@ export interface ItemBandejaPlazos {
   donador: { id: number; nombre: string; email: string };
   estudiante: { id: number; nombre: string; email: string };
   plazo: Plazo;
-}
-
-export interface ResumenPlazos {
-  vencidos: number;
-  porVencer: number;
-  enPlazo: number;
-  tareasDefinirEstado: number;
 }
 
 export interface MiPlazo {

@@ -1,4 +1,6 @@
+import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
+import { AuthService } from './core/auth.service';
 import {
   guardaAdministrador,
   guardaDonador,
@@ -32,10 +34,13 @@ export const rutas: Routes = [
       import('./paginas/mis-ofertas.component').then((m) => m.MisOfertasComponent),
   },
   {
+    // La antigua pagina "Mis movimientos" se integro en Mis donaciones /
+    // Mis peticiones (seguimiento dentro de cada tarjeta). Enlaces viejos
+    // llevan a la pagina propia del perfil.
+    // (rutaInicial ya devuelve /catalogo si no hay sesion; Angular no admite
+    // guards en una ruta de redireccion).
     path: 'mis-asignaciones',
-    canActivate: [guardaSesion],
-    loadComponent: () =>
-      import('./paginas/mis-asignaciones.component').then((m) => m.MisAsignacionesComponent),
+    redirectTo: () => inject(AuthService).rutaInicial(),
   },
   {
     path: 'lis/aprobaciones',
@@ -64,12 +69,9 @@ export const rutas: Routes = [
     canActivate: [guardaSesion, guardaPersonalLis],
     loadComponent: () => import('./paginas/local.component').then((m) => m.LocalComponent),
   },
-  {
-    path: 'lis/plazos',
-    canActivate: [guardaSesion, guardaPersonalLis],
-    loadComponent: () =>
-      import('./paginas/vencimientos.component').then((m) => m.VencimientosComponent),
-  },
+  // D-59: "Plazos y tareas" se repartio entre "Entregas y plazos" (tareas de
+  // asignaciones) y "Local y lotes" (tareas de Local y de lotes).
+  { path: 'lis/plazos', redirectTo: 'lis/custodia' },
   {
     path: 'lis/analitica',
     canActivate: [guardaSesion, guardaPersonalLis],

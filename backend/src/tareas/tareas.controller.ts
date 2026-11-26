@@ -6,7 +6,7 @@ import { Rol } from '../common/enums';
 import { DecisionTarea } from '../entities';
 import { TareasService } from './tareas.service';
 
-const DECISIONES: DecisionTarea[] = ['APLAZAR', 'CANCELAR_INTENTO', 'EXTENDER', 'REASIGNAR', 'DEVOLUCION', 'CUSTODIA_LOCAL', 'RETIRAR_PROPUESTA', 'SIN_ACCION'];
+const DECISIONES: DecisionTarea[] = ['APLAZAR', 'CANCELAR_INTENTO', 'EXTENDER', 'REASIGNAR', 'DEVOLUCION', 'CUSTODIA_LOCAL', 'RETIRAR_PROPUESTA', 'ESPERAR', 'RECIBIR_LIS', 'SIN_ACCION'];
 
 class ResolverDto {
   @IsIn(DECISIONES)
@@ -39,7 +39,7 @@ export class TareasController {
   revisar(@Body() dto: RevisarDto) {
     if (dto.fechaSimulada) {
       if (process.env.NODE_ENV === 'production') {
-        throw new BadRequestException('La fecha simulada no esta permitida en produccion.');
+        throw new BadRequestException('La fecha simulada no está permitida en produccion.');
       }
       return this.servicio.revisar(new Date(`${dto.fechaSimulada}T15:00:00Z`));
     }

@@ -1,3 +1,4 @@
+import { nombreArchivoSeguro } from '../common/seguridad-http';
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Put, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -26,7 +27,7 @@ class RespuestaDto {
 
 class GuardarCaracterizacionDto {
   @IsString()
-  @Matches(/^[ABCD][0-9]{1,2}$/, { message: 'El grupo Sisben debe tener la forma A1, B3, C12...' })
+  @Matches(/^[ABCD][0-9]{1,2}$/, { message: 'El grupo Sisbén debe tener la forma A1, B3, C12...' })
   grupoSisben: string;
 
   @IsArray()
@@ -61,7 +62,7 @@ function enviarArchivo(res: Response, a: { contenido: Buffer; mime: string; nomb
   res.setHeader('Content-Length', a.contenido.length);
   // Dato sensible: que ningun intermediario lo guarde.
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Content-Disposition', `inline; filename="${a.nombre}"`);
+  res.setHeader('Content-Disposition', `inline; filename="${nombreArchivoSeguro(a.nombre, 'certificado')}"`); // S6
   res.end(a.contenido);
 }
 

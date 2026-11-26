@@ -1,22 +1,21 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { PaginadorComponent, Paginado } from '../compartido/paginador.component';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { CertificadoMeta, UsuarioAdmin } from '../core/modelos';
-import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
+import { abrirBlob, estadoLegible, fecha, mensajeError, puntaje } from '../core/utilidades';
 
 /** Gestion de usuarios y roles. Solo administrador.
  *  La caracterizacion es un dato sensible: se consulta aparte y a peticion. */
 @Component({
   selector: 'lis-usuarios',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, PaginadorComponent],
   template: `
     <h1>Usuarios y roles</h1>
     <p class="subtitulo">
-      El perfil lo determina el dominio del correo verificado por Google y no se puede cambiar
-      aqui. El rol de auxiliar lo otorgas tu; el de administrador solo lo gestiona un
-      superusuario. El rol de superusuario solo se asigna por script de mantenimiento.
+      El perfil depende del correo. Los auxiliares los gestiona el administrador; los administradores, un superusuario.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
@@ -29,21 +28,21 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
         [value]="buscar()"
         (input)="buscar.set($any($event.target).value)"
       />
-      <button class="pequeno" (click)="cargar()">Buscar</button>
+      <button class="pequeno" (click)="buscarUsuarios()">Buscar</button>
     </div>
 
-    <table>
+    <table #tUsuarios>
       <thead>
         <tr>
           <th>Usuario</th>
           <th>Perfil</th>
           <th>Roles</th>
-          <th>Ultimo ingreso</th>
+          <th>Último ingreso</th>
           <th>Acciones</th>
         </tr>
       </thead>
       <tbody>
-        @for (u of usuarios(); track u.id) {
+        @for (u of pag.visibles(); track u.id) {
           <tr [id]="'fila-usuario-' + u.id" [class.seleccionada]="seleccionado()?.id === u.id">
             <td>
               <strong>{{ u.nombre }}</strong><br />
@@ -53,18 +52,18 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
                 <span class="dato">{{ u.motivoBloqueo }}</span>
               }
             </td>
-            <td><span class="etiqueta gris">{{ u.perfil }}</span></td>
+            <td><span class="etiqueta gris">{{ perfil(u.perfil) }}</span></td>
             <td>
               @if (!u.roles.length) { <span class="dato">-</span> }
               @for (r of u.roles; track r) {
-                <span class="etiqueta">{{ r }}</span>
+                <span class="etiqueta">{{ rol(r) }}</span>
               }
             </td>
             <td class="dato">{{ f(u.ultimoIngresoEn) }}</td>
             <td>
               <div class="fila">
                 @if (u.roles.includes('SUPERUSUARIO')) {
-                  <span class="dato">Gestionado solo por script</span>
+                  <span class="dato">Superusuario</span>
                 } @else {
                   @if (!u.roles.includes('AUXILIAR_LIS')) {
                     <button class="secundario pequeno" (click)="otorgar(u, 'AUXILIAR_LIS')">
@@ -96,7 +95,7 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
                 }
                 @if (u.perfil === 'ESTUDIANTE') {
                   <button class="secundario pequeno" (click)="verCaracterizacion(u)">
-                    Caracterizacion
+                    Caracterización
                   </button>
                 }
               </div>
@@ -105,19 +104,18 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
         }
       </tbody>
     </table>
+    <lis-paginador [control]="pag" [destino]="tUsuarios" />
 
     @if (!usuarios().length) {
-      <p class="vacio">No hay usuarios registrados todavia.</p>
+      <p class="vacio">No hay usuarios registrados todavía.</p>
     }
 
     @if (seleccionado(); as s) {
-      <h2 id="panel-caracterizacion" style="scroll-margin-top:1rem">Caracterizacion de {{ s.nombre }}</h2>
+      <h2 id="panel-caracterizacion" style="scroll-margin-top:1rem">Caracterización de {{ s.nombre }}</h2>
       <div class="tarjeta">
         @if (detalle(); as d) {
           <p class="dato">
-            Grupo Sisben <strong>{{ d.grupoSisben }}</strong> ({{ d.descripcionSisben }}) &middot;
-            puntaje de caracterizacion <strong>{{ pt(d.puntajeTotal) }}</strong>
-            <span class="dato">(0 a 1)</span>
+            Sisbén <strong>{{ d.grupoSisben }}</strong> ({{ d.descripcionSisben }}) &middot; puntaje <strong>{{ pt(d.puntajeTotal) }}</strong>
           </p>
           <table>
             <tbody>
@@ -130,7 +128,7 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
             </tbody>
           </table>
         } @else {
-          <p class="vacio">Este estudiante aun no tiene caracterizacion.</p>
+          <p class="vacio">Sin caracterización.</p>
         }
 
         <h3 style="margin-top:1rem">Certificado de estudio (opcional)</h3>
@@ -138,11 +136,11 @@ import { abrirBlob, fecha, mensajeError, puntaje } from '../core/utilidades';
           <div class="fila">
             <span class="etiqueta"
                   [class.gris]="c.estadoRevision === 'PENDIENTE'"
-                  [class.roja]="c.estadoRevision === 'RECHAZADO'">{{ c.estadoRevision }}</span>
+                  [class.roja]="c.estadoRevision === 'RECHAZADO'">{{ estadoCertificado(c.estadoRevision) }}</span>
             <span class="dato">{{ c.nombreOriginal ?? 'certificado' }} &middot; subido {{ f(c.subidoEn) }}</span>
             @if (c.revisadoEn) { <span class="dato">&middot; revisado {{ f(c.revisadoEn) }}</span> }
           </div>
-          @if (c.observacion) { <p class="dato">Observacion: <em>{{ c.observacion }}</em></p> }
+          @if (c.observacion) { <p class="dato">Observación: <em>{{ c.observacion }}</em></p> }
           <div class="fila" style="margin-top:.5rem">
             <button class="secundario pequeno" (click)="verCertificado(s)">Ver certificado</button>
             @if (c.estadoRevision !== 'VALIDADO') {
@@ -168,6 +166,7 @@ export class UsuariosComponent implements OnInit {
   auth = inject(AuthService);
 
   usuarios = signal<UsuarioAdmin[]>([]);
+  pag = new Paginado(this.usuarios, 25);
   detalle = signal<any | null>(null);
   seleccionado = signal<UsuarioAdmin | null>(null);
   certificado = signal<CertificadoMeta | null>(null);
@@ -176,8 +175,17 @@ export class UsuariosComponent implements OnInit {
   mensaje = signal<string | null>(null);
   f = fecha;
   pt = puntaje;
+  perfil = estadoLegible;
+  rol = estadoLegible;
+  estadoCertificado = estadoLegible;
 
   ngOnInit(): void {
+    this.cargar();
+  }
+
+  /** Boton "Buscar": nueva busqueda, vuelve a la primera hoja. */
+  buscarUsuarios(): void {
+    this.pag.reiniciar();
     this.cargar();
   }
 
@@ -212,17 +220,28 @@ export class UsuariosComponent implements OnInit {
   }
 
   bloquear(u: UsuarioAdmin): void {
-    const motivo = prompt(`Motivo del bloqueo de ${u.nombre} (minimo 5 caracteres):`);
+    const motivo = prompt(
+      `Motivo del bloqueo de ${u.nombre} (mínimo 5 caracteres).\n` +
+        'Se cerrarán sus donaciones y peticiones publicadas. Si tiene mediaciones en proceso, primero hay que resolverlas.',
+    );
     if (!motivo || motivo.trim().length < 5) return;
     this.api.bloquear(u.id, motivo.trim()).subscribe({
-      next: () => this.hecho(`${u.nombre} quedo bloqueado.`),
+      next: (r) => {
+        // D-64 (C2): al bloquear se cierran sus publicaciones abiertas. Si tenia
+        // mediaciones en proceso, el servidor lo rechaza y el aviso dice cuales.
+        const c = r?.cerradas;
+        const cerradas = c && (c.ofertas || c.peticiones)
+          ? ` Se cerraron ${c.ofertas} donación(es) y ${c.peticiones} petición(es) que tenia publicadas.`
+          : '';
+        this.hecho(`${u.nombre} quedó bloqueado.${cerradas}`);
+      },
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
 
   desbloquear(u: UsuarioAdmin): void {
     this.api.desbloquear(u.id).subscribe({
-      next: () => this.hecho(`${u.nombre} quedo activo.`),
+      next: () => this.hecho(`${u.nombre} quedó activo.`),
       error: (e) => this.error.set(mensajeError(e)),
     });
   }
@@ -270,7 +289,7 @@ export class UsuariosComponent implements OnInit {
   revisarCertificado(u: UsuarioAdmin, estado: 'VALIDADO' | 'RECHAZADO'): void {
     let observacion: string | undefined;
     if (estado === 'RECHAZADO') {
-      const motivo = prompt('Motivo del rechazo (minimo 5 caracteres):');
+      const motivo = prompt('Motivo del rechazo (mínimo 5 caracteres):');
       if (!motivo || motivo.trim().length < 5) return;
       observacion = motivo.trim();
     }

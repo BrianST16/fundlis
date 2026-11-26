@@ -1,67 +1,61 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { PaginadorComponent, Paginado } from '../compartido/paginador.component';
 import { ApiService } from '../core/api.service';
 import { FotoComponent } from '../compartido/foto.component';
-import { AuthService } from '../core/auth.service';
 import { NotificacionBandeja } from '../core/modelos';
-import { fecha, mensajeError } from '../core/utilidades';
+import { fecha, mensajeError, textoLegible } from '../core/utilidades';
 
-/** Bandeja interna (canal 1 de D-42). El canal 2 es el correo al email registrado. */
+/** Bandeja interna: unico canal de notificaciones mientras el correo esta
+ *  fuera del alcance (D-53). */
 @Component({
   selector: 'lis-bandeja',
   standalone: true,
-  imports: [CommonModule, FotoComponent],
+  imports: [CommonModule, FotoComponent, PaginadorComponent],
   template: `
-    <h1>Bandeja</h1>
+    <h1 #tBandeja>Bandeja</h1>
     <p class="subtitulo">
-      Avisos de la plataforma. Por ahora las notificaciones llegan solo a esta bandeja interna.
+      Avisos sobre tus donaciones, peticiones y plazos.
     </p>
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
-    @if (correo(); as c) {
-      <div class="aviso" [class.info]="c.smtpConfigurado" [class.error]="!c.smtpConfigurado">
-        Canal de correo: {{ c.smtpConfigurado ? 'configurado' : 'SIN configurar (solo bandeja interna)' }}
-        &middot; @for (k of claves(c.porEstado); track k) { {{ k }}: {{ c.porEstado[k] }} &nbsp; }
-      </div>
-    }
     <div class="fila" style="margin-bottom:1rem">
-      <button class="pequeno" [class.secundario]="!soloNoLeidas()" (click)="filtrar(true)">No leidas</button>
+      <button class="pequeno" [class.secundario]="!soloNoLeidas()" (click)="filtrar(true)">No leídas</button>
       <button class="pequeno" [class.secundario]="soloNoLeidas()" (click)="filtrar(false)">Todas</button>
-      <button class="secundario pequeno" (click)="todas()">Marcar todas como leidas</button>
+      <button class="secundario pequeno" (click)="todas()">Marcar todas como leídas</button>
     </div>
-    @for (n of lista(); track n.id) {
+    @for (n of pag.visibles(); track n.id) {
       <div class="tarjeta" [style.opacity]="n.leida ? 0.65 : 1">
         <div class="fila">
-          @if (!n.leida) { <span class="etiqueta">nuevo</span> }
-          <strong>{{ n.titulo }}</strong>
+          @if (!n.leida) { <span class="etiqueta">Nuevo</span> }
+          <strong>{{ legible(n.titulo) }}</strong>
           <span class="dato">{{ f(n.creadaEn) }}</span>
         </div>
-        <p style="margin:.4rem 0">{{ n.mensaje }}</p>
+        <p style="margin:.4rem 0">{{ legible(n.mensaje) }}</p>
         @if (n.evidenciaId) {
           <!-- D-51: foto adjunta (p. ej. entrega final). Clic para ampliar. -->
           <div style="max-width:260px; margin-bottom:.4rem">
             <lis-foto [evidenciaId]="n.evidenciaId" [alt]="n.titulo" />
           </div>
         }
-        @if (!n.leida) { <button class="secundario pequeno" (click)="leer(n)">Marcar como leida</button> }
+        @if (!n.leida) { <button class="secundario pequeno" (click)="leer(n)">Marcar como leída</button> }
       </div>
     } @empty { <p class="vacio">No tienes avisos.</p> }
+    <lis-paginador [control]="pag" [destino]="tBandeja" />
   `,
 })
 export class BandejaComponent implements OnInit {
   private api = inject(ApiService);
-  private auth = inject(AuthService);
 
   lista = signal<NotificacionBandeja[]>([]);
+  pag = new Paginado(this.lista, 50);
   soloNoLeidas = signal(false);
-  correo = signal<{ smtpConfigurado: boolean; porEstado: Record<string, number> } | null>(null);
   error = signal<string | null>(null);
   f = fecha;
+  /** Titulos y mensajes del servidor sin codigos internos. */
+  legible = textoLegible;
 
   ngOnInit(): void {
     this.cargar();
-    if (this.auth.esAdministrador()) {
-      this.api.estadoCorreo().subscribe({ next: (c) => this.correo.set(c) });
-    }
   }
 
   private cargar(): void {
@@ -72,6 +66,7 @@ export class BandejaComponent implements OnInit {
   }
 
   filtrar(v: boolean): void {
+    this.pag.reiniciar();
     this.soloNoLeidas.set(v);
     this.cargar();
   }
@@ -82,9 +77,5 @@ export class BandejaComponent implements OnInit {
 
   todas(): void {
     this.api.marcarTodasLeidas().subscribe({ next: () => this.cargar() });
-  }
-
-  claves(o: Record<string, number>): string[] {
-    return Object.keys(o);
   }
 }

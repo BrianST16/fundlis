@@ -39,7 +39,7 @@ con sus opciones y los parámetros de configuración.
 
 El seed termina imprimiendo un conteo: si ves `grupos_sisben = 51`, quedó bien.
 
-Después aplica las **migraciones versionadas** (`db/migraciones/003` a `011`).
+Después aplica las **migraciones versionadas** (`db/migraciones/003` a `014`).
 El ejecutor las registra en `ESQUEMA_VERSION`, aplica cada una en una
 transacción y solo opera sobre la base `LisDona`:
 
@@ -121,6 +121,10 @@ Lista de verificación. Nada de esto está automatizado todavía.
    `BD_EXPERIMENTAL_PERMITIDA` con ese nombre.
 3. Opcional, solo para la presentación: `db/03_demo_presentacion.sql`.
 4. Hacer un respaldo (`node scripts/db/respaldar-bd.js`) antes de cada cambio.
+5. **Permisos mínimos (S4):** ejecutar `db/scripts/crear_usuario_app.sql` con
+   un administrador. El backend se conecta como `lis_app` (lee y escribe datos,
+   sin DDL y sin poder modificar el historial); las migraciones se siguen
+   ejecutando con el usuario administrador.
 
 **Backend (NestJS)**
 1. Variables de entorno, **no** un `.env` subido al repositorio. Ver
@@ -129,7 +133,11 @@ Lista de verificación. Nada de esto está automatizado todavía.
    credenciales de la BD (`DB_ENCRYPT=true` si el servidor lo exige).
 2. `npm ci && npm run build && npm run start:prod`, que sirve en `PORT` con el
    prefijo `/api`.
-3. Comprobar `GET https://TU-BACKEND/api/salud` → `"baseDatos":"conectada"`.
+3. Detrás del proxy del hosting: `TRUST_PROXY=1`, para que el límite de
+   peticiones por IP (D-65) vea la IP real y no la del proxy. Las cabeceras de
+   seguridad de la API (nosniff, anti-iframe, CSP, y HSTS con
+   `NODE_ENV=production`) ya las pone el backend.
+4. Comprobar `GET https://TU-BACKEND/api/salud` → `"baseDatos":"conectada"`.
 
 **Frontend (Angular)**
 1. En `frontend/src/environments/environment.prod.ts`, poner `apiUrl` con la URL
@@ -141,13 +149,27 @@ Lista de verificación. Nada de esto está automatizado todavía.
    `/* /index.html 200`; Vercel: `rewrites` a `/index.html`; Nginx:
    `try_files $uri $uri/ /index.html;`; Firebase: `"rewrites": [{"source": "**", "destination": "/index.html"}]`.
    Sin esto, recargar `/lis/...` devuelve 404.
+4. **Cabeceras de seguridad del frontend (S5, D-65):** configurarlas en el
+   hosting (Netlify `_headers`, Vercel `headers`, Nginx `add_header`). La CSP
+   debe permitir Google Identity Services; probarla iniciando sesión antes de
+   darla por buena:
+   ```
+   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; frame-src https://accounts.google.com/gsi/; connect-src 'self' https://TU-BACKEND https://accounts.google.com/gsi/; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' blob: data: https://*.googleusercontent.com; frame-ancestors 'none'
+   X-Content-Type-Options: nosniff
+   Referrer-Policy: strict-origin-when-cross-origin
+   Strict-Transport-Security: max-age=31536000; includeSubDomains
+   ```
+   `'unsafe-inline'` en `script-src` es por el pequeño script de `index.html`
+   que aplica el modo oscuro antes de cargar; se puede cambiar por su hash.
+   Esta CSP es la mitigación principal de S5 (token en `localStorage`): sin
+   scripts de terceros no autorizados, un XSS no puede robarlo.
 
 **Google OAuth**
 - En Google Cloud Console, agregar la URL pública del frontend en *Orígenes
   autorizados de JavaScript*. Sin eso, el botón de Google falla en producción.
 
 **Prueba final:** iniciar sesión con Google, recargar (F5) una ruta anidada como
-`/lis/plazos` y comprobar que no queda en blanco.
+`/lis/custodia` y comprobar que no queda en blanco.
 
 ---
 
@@ -181,16 +203,16 @@ de la misma oferta a peticiones distintas: el saldo se recalcula solo.
 
 Todo es ficticio y está marcado con `[DEMO]`. Las cuentas demo no pueden iniciar
 sesión: entra con tu cuenta de administrador para ver el LIS. Después de cargarlo,
-en *Plazos y tareas* pulsa **Revisar ahora** para generar las tareas vencidas.
+en *Entregas y plazos* pulsa **Revisar ahora** para generar las tareas vencidas.
 
 | Pantalla | Qué se puede mostrar |
 |---|---|
 | Aprobaciones | Oferta de donador **★ recurrente** (D-49), de uno nuevo, de uno con fallas y una **propia del auxiliar** (D-47) |
 | Emparejamiento | Chaqueta (KD-tree: 2 peticiones compatibles y 2 excluidas por estado o talla); lotes disponibles: tablet sin destino, resmas recibidas incompletas y videoproyector en custodia LOCAL |
-| Custodia | Asignación vencida del donador; asignación en plazo (registrar recepción); en custodia vencida (**reasignar**, corrección 6); en custodia reciente (registrar **entrega con foto**, corrección 9); devolución pendiente; **Trazabilidad** |
-| LOCAL | Espera de recepción, custodia temporal, **propuesta al donador** en plazo y vencida, **por devolver** (rechazó) y **aceptado** (D-50) |
-| Plazos y tareas | DEFINIR_ESTADO: donador que no entregó, estudiante que no recogió, lote sin destino y propuesta LOCAL sin respuesta |
-| Analítica | Ranking de donadores con ★ recurrente, cumplimiento y alertas por fallas |
+| Entregas y plazos | Aviso **DEFINIR_ESTADO** y filtro *Vencidas* (D-59): donador que no entregó (**dar más tiempo** o cancelar) y estudiante que no recogió (dar más tiempo, **reasignar** —corrección 6—, custodia Local o devolución); asignación en plazo (registrar recepción); en custodia reciente (registrar **entrega con foto**, corrección 9); cancelar con causa (D-57); devolución pendiente; **Trazabilidad** |
+| Local y lotes | Espera de recepción, custodia temporal, **propuesta al donador** en plazo y vencida, **por devolver** (rechazó) y **aceptado** (D-50); las tareas DEFINIR_ESTADO de Local y del lote sin destino aparecen primero y se deciden en su tarjeta o fila (D-59) |
+| Mis donaciones / Mis peticiones | Seguimiento de cada asignación dentro de su tarjeta: estado, siguiente paso y plazo en días hábiles (D-54) |
+| Analítica | Estudiantes **en riesgo** resaltados (filtro *Solo en riesgo*); el aviso llega a la bandeja del personal del LIS tras *Revisar ahora* (D-55). Ranking de donadores con ★ recurrente, cumplimiento y alertas por fallas |
 | Usuarios | Superusuario, administrador, auxiliares, cuenta bloqueada, y certificados validado, pendiente y **rechazado (docente)** (D-46); estudiante con 5 peticiones abiertas (límite) |
 
 Para mostrar también las pantallas del **donador** (propuesta LOCAL para
@@ -434,9 +456,10 @@ el MVP funcionara. Conviene revisarlos con el equipo y con el profesor.
 
 - **Pilar B (parcial):** calendario hábil colombiano con festivos **calculados**
   (Ley 51 de 1983 y Pascua) y cierres del LIS configurables
-  (`PARAMETRO.CIERRES_LIS`); plazos de 10 y 3 días hábiles; bandeja
-  *Plazos y tareas*, donde lo vencido es una tarea `DEFINIR_ESTADO` con sus
-  acciones; plazos propios en *Mis movimientos*.
+  (`PARAMETRO.CIERRES_LIS`); plazos de 10 y 3 días hábiles; lo vencido es una
+  tarea `DEFINIR_ESTADO` que se decide en la página de su objeto (*Entregas y
+  plazos* o *Local y lotes*), con contadores en el menú (D-59); los plazos propios del donador y del estudiante se ven en el
+  seguimiento de cada tarjeta de *Mis donaciones* / *Mis peticiones* (D-54).
 - **Pilar C:** indicadores, ranking de estudiantes y de donadores (separado de
   la prioridad) y alertas de incumplimiento; pantalla *Analítica*. La fórmula
   está en `backend/src/analitica/formulas.ts`.

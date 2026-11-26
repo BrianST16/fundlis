@@ -41,7 +41,7 @@ export class JwtGuard implements CanActivate {
 
     if (!token || tipo !== 'Bearer') {
       if (esPublico) return true;
-      throw new UnauthorizedException('Falta el token de sesion.');
+      throw new UnauthorizedException('Falta el token de sesión.');
     }
 
     let payload: PayloadJwt;
@@ -50,7 +50,7 @@ export class JwtGuard implements CanActivate {
     } catch {
       // En una ruta publica un token invalido no bloquea: se sigue como invitado.
       if (esPublico) return true;
-      throw new UnauthorizedException('La sesion expiro o el token no es valido.');
+      throw new UnauthorizedException('La sesión expiro o el token no es válido.');
     }
 
     let vigente: PayloadJwt;
@@ -62,7 +62,7 @@ export class JwtGuard implements CanActivate {
       // se propagan para no confundirlos con un problema de credenciales.
       if (e instanceof ForbiddenException) {
         if (esPublico) return true;
-        throw new UnauthorizedException('La cuenta no esta disponible. Inicia sesion de nuevo.');
+        throw new UnauthorizedException('La cuenta no está disponible. Inicia sesión de nuevo.');
       }
       throw e;
     }

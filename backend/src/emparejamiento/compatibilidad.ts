@@ -94,13 +94,13 @@ export function esCompatible(o: AtributosOferta, p: AtributosPeticion): boolean 
 /** Motivo legible de incompatibilidad (para explicar al auxiliar). */
 export function motivoIncompatibilidad(o: AtributosOferta, p: AtributosPeticion): string | null {
   if (Number(o.estadoConservacion) < Number(p.estadoMinimo)) {
-    return `La peticion exige estado minimo ${p.estadoMinimo} y la oferta es ${o.estadoConservacion}.`;
+    return `La petición exige estado mínimo ${p.estadoMinimo} y la oferta es ${o.estadoConservacion}.`;
   }
   const m = num(o.medida);
   const min = num(p.medidaMin);
   const max = num(p.medidaMax);
-  if (m === null && (min !== null || max !== null)) return 'La oferta no declara la medida que la peticion restringe.';
-  if (m !== null && min !== null && m < min) return `La medida ${m} es menor que el minimo ${min}.`;
-  if (m !== null && max !== null && m > max) return `La medida ${m} es mayor que el maximo ${max}.`;
+  if (m === null && (min !== null || max !== null)) return 'La oferta no declara la medida que la petición restringe.';
+  if (m !== null && min !== null && m < min) return `La medida ${m} es menor que el mínimo ${min}.`;
+  if (m !== null && max !== null && m > max) return `La medida ${m} es mayor que el máximo ${max}.`;
   return null;
 }

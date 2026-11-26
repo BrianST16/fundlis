@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { FotoComponent } from '../compartido/foto.component';
 import { ApiService } from '../core/api.service';
 import { LoteFisico, OfertaCatalogo, ResultadoEmparejamiento } from '../core/modelos';
 import { mensajeError } from '../core/utilidades';
@@ -10,18 +11,17 @@ import { mensajeError } from '../core/utilidades';
  *  A) busqueda de COMPATIBILIDAD con un KD-tree sobre atributos reales del
  *     producto (estado de conservacion, medida) dentro de la categoria;
  *  B) orden por PRIORIDAD socioeconomica (Sisben + caracterizacion +
- *     antiguedad), con los componentes a la vista. LOCAL siempre al final.
+ *     antiguedad), con los componentes a la vista. Local siempre al final.
  * La decision la confirma el auxiliar.
  */
 @Component({
   selector: 'lis-emparejamiento',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FotoComponent],
   template: `
     <h1>Emparejamiento</h1>
     <p class="subtitulo">
-      Fase A: el KD-tree encuentra las peticiones <strong>compatibles</strong> con el producto.
-      Fase B: se ordenan por <strong>prioridad</strong>. La asignacion la confirmas tu.
+      Las peticiones compatibles se ordenan por prioridad. Tú confirmas la asignación.
     </p>
 
     @if (error()) { <div class="aviso error">{{ error() }}</div> }
@@ -29,36 +29,33 @@ import { mensajeError } from '../core/utilidades';
 
     @if (reasignando(); as ra) {
       <div class="aviso info">
-        <strong>Reasignando el producto de la asignacion #{{ ra.asignacionId }}</strong> (lote #{{ ra.loteId }},
-        ya esta EN_CUSTODIA en el LIS). Al confirmar: el producto pasa directo a custodia de la nueva
-        peticion <strong>sin repetir la recepcion</strong>, la peticion original se cierra por
-        incumplimiento, queda todo en el historial y se avisa al donador y a los dos estudiantes.
-        <button class="secundario pequeno" style="margin-left:.5rem" (click)="salirDeReasignacion()">Cancelar reasignacion</button>
+        <strong>Reasignando la asignación #{{ ra.asignacionId }}</strong> (lote #{{ ra.loteId }}). El producto pasa a la nueva petición sin repetir la recepción; la original se cierra por incumplimiento.
+        <button class="secundario pequeno" style="margin-left:.5rem" (click)="salirDeReasignacion()">Cancelar reasignación</button>
       </div>
     }
 
     <div class="tarjeta" [hidden]="!!reasignando()">
       <div class="fila">
-        <button class="pequeno" [class.secundario]="modo() !== 'OFERTA'" (click)="cambiarModo('OFERTA')">Desde una donacion</button>
+        <button class="pequeno" [class.secundario]="modo() !== 'OFERTA'" (click)="cambiarModo('OFERTA')">Desde una donación</button>
         <button class="pequeno" [class.secundario]="modo() !== 'LOTE'" (click)="cambiarModo('LOTE')">
-          Lotes en el LIS disponibles ({{ lotes().length }})
+          Lotes en el LIS ({{ lotes().length }})
         </button>
       </div>
       @if (modo() === 'OFERTA') {
-        <label>Donacion aprobada con unidades disponibles</label>
+        <label>Donación</label>
         <select [value]="seleccion()" (change)="elegir($any($event.target).value)">
-          <option value="">Selecciona una donacion</option>
+          <option value="">Selecciona una donación</option>
           @for (o of ofertas(); track o.id) {
             <option [value]="o.id">#{{ o.id }} — {{ o.nombreProducto }} ({{ o.cantidadDisponible }} disp.)</option>
           }
         </select>
       } @else {
-        <label>Lote fisico ya en el LIS (sin destino o en custodia temporal LOCAL): pasa directo a custodia, sin nueva recepcion</label>
+        <label>Lote en el LIS</label>
         <select [value]="seleccion()" (change)="elegir($any($event.target).value)">
           <option value="">Selecciona un lote</option>
           @for (l of lotes(); track l.id) {
             <option [value]="l.id">
-              Lote #{{ l.id }} — {{ l.producto }} ({{ l.cantidad }} u.){{ l.enCustodiaLocal ? ' · custodia LOCAL' : '' }}
+              Lote #{{ l.id }} — {{ l.producto }} ({{ l.cantidad }} u.){{ l.enCustodiaLocal ? ' · custodia Local' : '' }}
             </option>
           }
         </select>
@@ -69,21 +66,31 @@ import { mensajeError } from '../core/utilidades';
 
     @if (resultado(); as r) {
       <div class="tarjeta">
-        <strong>{{ r.oferta.nombreProducto }}</strong> <span class="etiqueta gris">{{ r.oferta.categoria }}</span>
+        <!-- El producto elegido, con su foto (clic para ampliar) y descripcion. -->
+        <div class="producto-elegido">
+          @if (r.oferta.fotoId) {
+            <div class="producto-foto"><lis-foto [evidenciaId]="r.oferta.fotoId" [alt]="r.oferta.nombreProducto" /></div>
+          }
+          <div>
+            <strong>{{ r.oferta.nombreProducto }}</strong> <span class="etiqueta gris">{{ r.oferta.categoria }}</span>
+            <span class="dato">donación #{{ r.oferta.id }}{{ r.origen === 'LOTE' ? ' · lote #' + r.loteId : '' }}</span>
+            @if (r.oferta.descripcion) { <p style="margin:.35rem 0 0">{{ r.oferta.descripcion }}</p> }
+            @if (!r.oferta.fotoId) { <p class="dato">Sin foto.</p> }
+          </div>
+        </div>
         <p class="dato">
-          Atributos del producto: estado <strong>{{ r.oferta.estadoConservacionTexto }}</strong>
+          Conservación <strong>{{ r.oferta.estadoConservacionTexto }}</strong>
           @if (r.oferta.medidaNombre) { &middot; {{ r.oferta.medidaNombre }} <strong>{{ r.oferta.medida ?? 'sin declarar' }}</strong> }
           &middot; {{ r.cantidadDisponible }} unidades {{ r.origen === 'LOTE' ? 'en el lote' : 'por asignar' }}
         </p>
-        <p class="dato">
-          <strong>Fase A — KD-tree:</strong> caja de busqueda sobre ({{ r.busqueda.dimensiones.join(', ') }}):
+        <details class="dato"><summary>Detalle del algoritmo</summary> <p class="dato"> <strong>Fase A — KD-tree:</strong> caja de búsqueda sobre ({{ r.busqueda.dimensiones.join(', ') }}):
           min [{{ fmtCaja(r.busqueda.cajaMin) }}] &middot; max [{{ fmtCaja(r.busqueda.cajaMax) }}]
         </p>
         <p class="dato">
-          {{ r.diagnostico.totalEnCategoria }} peticiones en la categoria &rarr;
+          {{ r.diagnostico.totalEnCategoria }} peticiones en la categoría &rarr;
           <strong>{{ r.diagnostico.compatibles }} compatibles</strong>, {{ r.diagnostico.incompatibles }} excluidas
           &middot; {{ r.diagnostico.nodosVisitados }} nodos visitados &middot; altura {{ r.diagnostico.alturaArbol }}
-          &middot; construccion {{ r.diagnostico.msConstruccion }} ms, consulta {{ r.diagnostico.msConsulta }} ms
+          &middot; construcción {{ r.diagnostico.msConstruccion }} ms, consulta {{ r.diagnostico.msConsulta }} ms
           @if (r.diagnostico.coincideConFiltroLineal) {
             <span class="etiqueta">verificado contra filtro lineal</span>
           } @else {
@@ -93,12 +100,11 @@ import { mensajeError } from '../core/utilidades';
         <p class="dato">
           <strong>Fase B — prioridad:</strong> P = {{ r.coeficientes.caracterizacion | number: '1.2-2' }}·C +
           {{ r.coeficientes.sisben | number: '1.2-2' }}·S + {{ r.coeficientes.antiguedad | number: '1.2-2' }}·A
-          (A = dias desde la fecha original / {{ r.coeficientes.horizonteDias }}, maximo 1). {{ r.escalaPrioridad }}
-        </p>
+          (A = días desde la fecha original / {{ r.coeficientes.horizonteDias }}, máximo 1). </p></details>
       </div>
 
       @if (!r.candidatos.length) {
-        <p class="vacio">No hay peticiones compatibles disponibles. Puedes usar LOCAL (ultima opcion).</p>
+        <p class="vacio">No hay peticiones compatibles.</p>
       }
 
       @for (c of r.candidatos; track c.peticionId) {
@@ -106,18 +112,18 @@ import { mensajeError } from '../core/utilidades';
           <div class="fila">
             <span class="etiqueta">#{{ c.posicion }}</span>
             <strong>{{ c.estudianteNombre }}</strong>
-            <span class="dato">peticion #{{ c.peticionId }}</span>
-            @if (c.grupoSisben) { <span class="etiqueta gris">Sisben {{ c.grupoSisben }} (solo admin)</span> }
+            <span class="dato">petición #{{ c.peticionId }}</span>
+            @if (c.grupoSisben) { <span class="etiqueta gris">Sisbén {{ c.grupoSisben }} </span> }
           </div>
           <p style="margin:.4rem 0">{{ c.descripcionPeticion }}</p>
           <p class="dato">
-            Requisitos: estado minimo {{ c.atributos.estadoMinimo }}
+            Requisitos: estado mínimo {{ c.atributos.estadoMinimo }}
             @if (c.atributos.medidaMin !== null || c.atributos.medidaMax !== null) {
               &middot; medida {{ c.atributos.medidaMin ?? '—' }} a {{ c.atributos.medidaMax ?? '—' }}
             }
           </p>
           <table style="margin:.4rem 0">
-            <thead><tr><th>Sisben (S)</th><th>Caracterizacion (C)</th><th>Antiguedad (A)</th><th>Prioridad total</th></tr></thead>
+            <thead><tr><th>Sisbén (S)</th><th>Caracterización (C)</th><th>Antigüedad (A)</th><th>Prioridad total</th></tr></thead>
             <tbody><tr>
               <td>{{ c.prioridad.sisben | number: '1.3-3' }}</td>
               <td>{{ c.prioridad.caracterizacion | number: '1.3-3' }}</td>
@@ -125,7 +131,7 @@ import { mensajeError } from '../core/utilidades';
               <td><strong>{{ c.prioridad.total | number: '1.3-3' }}</strong></td>
             </tr></tbody>
           </table>
-          @if (c.sinCaracterizacion) { <p class="dato">Sin caracterizacion registrada: S = C = 0.</p> }
+          @if (c.sinCaracterizacion) { <p class="dato">Sin caracterización (S = C = 0).</p> }
           <div class="fila" style="margin-top:.4rem">
             @if (r.origen === 'OFERTA') {
               <input type="number" min="1" [max]="r.cantidadDisponible" [value]="cantidades()[c.peticionId] ?? 1"
@@ -138,7 +144,7 @@ import { mensajeError } from '../core/utilidades';
 
       <div class="tarjeta" style="border-style:dashed" [hidden]="!!reasignando() || loteYaEnLocal(r)">
         <div class="fila">
-          <span class="etiqueta ambar">Ultima opcion</span>
+          <span class="etiqueta ambar">Última opción</span>
           <strong>{{ r.destinoLocal.nombre }}</strong>
         </div>
         <ul class="dato" style="margin:.4rem 0; padding-left:1.1rem">
@@ -150,7 +156,7 @@ import { mensajeError } from '../core/utilidades';
                    (input)="cantidadLocal.set($any($event.target).value)" style="max-width:110px" />
           }
           <button class="secundario pequeno" [disabled]="ocupado()" (click)="destinarLocal(r)">
-            Destinar a LOCAL (custodia temporal)
+            Destinar a Local (custodia temporal)
           </button>
         </div>
       </div>
@@ -161,8 +167,9 @@ export class EmparejamientoComponent implements OnInit {
   private api = inject(ApiService);
   private router = inject(Router);
 
-  /** Query params (?lote=&asignacion=) que llegan desde "Custodia y entregas"
-   *  al pulsar "Reasignar a otra peticion" (withComponentInputBinding). */
+  /** Query params (?lote=&asignacion=) que llegan desde "Entregas y plazos"
+   *  o "Local y lotes" (withComponentInputBinding). Si el objeto tenia una tarea
+   *  DEFINIR_ESTADO abierta, la reasignacion la resuelve en el backend (D-56). */
   lote = input<string | undefined>();
   asignacion = input<string | undefined>();
   reasignando = signal<{ asignacionId: number; loteId: number } | null>(null);
@@ -190,7 +197,7 @@ export class EmparejamientoComponent implements OnInit {
       // "sin destino", asi que se consultan sus candidatos directamente.
       this.elegir(String(loteId));
     } else if (loteId > 0) {
-      // Desde "LOCAL y lotes": lote sin destino o en custodia temporal LOCAL.
+      // Desde "Local y lotes": lote sin destino o en custodia temporal Local.
       this.modo.set('LOTE');
       this.elegir(String(loteId));
     }
@@ -210,7 +217,7 @@ export class EmparejamientoComponent implements OnInit {
 
   private cargarListas(): void {
     this.api.catalogoOfertas().subscribe({ next: (o) => this.ofertas.set(o), error: (e) => this.error.set(mensajeError(e)) });
-    // D-50: tambien lo que esta en custodia temporal LOCAL se puede emparejar.
+    // D-50: tambien lo que esta en custodia temporal Local se puede emparejar.
     this.api.lotes('DISPONIBLES').subscribe({ next: (l) => this.lotes.set(l), error: () => this.lotes.set([]) });
   }
 
@@ -259,8 +266,8 @@ export class EmparejamientoComponent implements OnInit {
     const ra = this.reasignando();
     if (ra) {
       const motivo = prompt(
-        `Motivo de la reasignacion de la asignacion #${ra.asignacionId} (minimo 5 caracteres).\n` +
-          'La peticion original se cerrara por incumplimiento.',
+        `Motivo de la reasignación de la asignación #${ra.asignacionId} (mínimo 5 caracteres).\n` +
+          'La petición original se cerrara por incumplimiento.',
       );
       if (!motivo || motivo.trim().length < 5) return;
       this.ocupado.set(true);
@@ -270,8 +277,8 @@ export class EmparejamientoComponent implements OnInit {
           this.reasignando.set(null);
           this.router.navigate([], { queryParams: {} });
           this.terminar(
-            `Reasignado sin nueva recepcion: asignacion #${a.id} EN_CUSTODIA para la peticion #${peticionId}. ` +
-              'Se aviso al donador y a los estudiantes.',
+            `Reasignado sin nueva recepción: asignación #${a.id} EN_CUSTODIA para la petición #${peticionId}. ` +
+              'Se avisó al donador y a los estudiantes.',
             r,
           );
         },
@@ -283,7 +290,7 @@ export class EmparejamientoComponent implements OnInit {
     this.error.set(null);
     if (r.origen === 'LOTE' && r.loteId) {
       this.api.reasignarLote(r.loteId, peticionId).subscribe({
-        next: (a) => this.terminar(`Lote reasignado: asignacion #${a.id} EN_CUSTODIA (sin nueva recepcion). Se aviso al estudiante.`, r),
+        next: (a) => this.terminar(`Lote reasignado: asignación #${a.id} EN_CUSTODIA (sin nueva recepción). Se avisó al estudiante.`, r),
         error: (e) => { this.error.set(mensajeError(e, 'No se pudo reasignar.')); this.ocupado.set(false); },
       });
       return;
@@ -295,13 +302,13 @@ export class EmparejamientoComponent implements OnInit {
       return;
     }
     this.api.asignar({ ofertaId: r.oferta.id, peticionId, cantidad }).subscribe({
-      next: (a) => this.terminar(`Asignacion #${a.id} creada (${cantidad} u.). Se aviso al donador y al estudiante.`, r),
+      next: (a) => this.terminar(`Asignación #${a.id} creada (${cantidad} u.). Se avisó al donador y al estudiante.`, r),
       error: (e) => { this.error.set(mensajeError(e, 'No se pudo asignar.')); this.ocupado.set(false); },
     });
   }
 
   destinarLocal(r: ResultadoEmparejamiento): void {
-    const motivo = prompt('Motivo para destinar a LOCAL (minimo 5 caracteres):');
+    const motivo = prompt('Motivo para destinar a Local (mínimo 5 caracteres):');
     if (!motivo || motivo.trim().length < 5) return;
     this.ocupado.set(true);
     this.error.set(null);
@@ -310,8 +317,8 @@ export class EmparejamientoComponent implements OnInit {
         ? this.api.localDesdeLote(r.loteId, motivo.trim())
         : this.api.localDesdeOferta(r.oferta.id, Number(this.cantidadLocal()), motivo.trim());
     llamada.subscribe({
-      next: (d) => this.terminar(`Destino LOCAL #${d.id} en ${d.estado}. Gestionalo en "LOCAL y lotes".`, r),
-      error: (e) => { this.error.set(mensajeError(e, 'No se pudo destinar a LOCAL.')); this.ocupado.set(false); },
+      next: (d) => this.terminar(`Destino Local #${d.id} en ${d.estado}. Gestiónalo en "Local y lotes".`, r),
+      error: (e) => { this.error.set(mensajeError(e, 'No se pudo destinar a Local.')); this.ocupado.set(false); },
     });
   }
 }

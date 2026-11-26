@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { CategoriasService } from '../categorias/categorias.service';
 import { CalendarioService } from '../calendario/calendario.service';
 import { EntidadHistorial, EstadoOferta } from '../common/enums';
@@ -50,20 +50,20 @@ export class OfertasService {
   private async validarFoto(fotoId: number, donadorId: number, ofertaId?: number): Promise<void> {
     const evidencia = await this.evidencias.findOne({ where: { id: fotoId } });
     if (!evidencia) {
-      throw new BadRequestException('La fotografia indicada no existe.');
+      throw new BadRequestException('La fotografía indicada no existe.');
     }
     if (evidencia.subidaPor !== donadorId) {
       throw new ForbiddenException('Solo puedes usar fotografias que hayas subido tu.');
     }
     const enMovimiento = await this.movimientos.count({ where: { evidenciaId: fotoId } });
     if (enMovimiento > 0) {
-      throw new BadRequestException('Esa fotografia ya es evidencia de un movimiento fisico.');
+      throw new BadRequestException('Esa fotografía ya es evidencia de un movimiento físico.');
     }
     const enOtraOferta = await this.ofertas.count({
       where: ofertaId ? { fotoId, id: Not(ofertaId) } : { fotoId },
     });
     if (enOtraOferta > 0) {
-      throw new BadRequestException('Esa fotografia ya esta asociada a otra oferta.');
+      throw new BadRequestException('Esa fotografía ya está asociada a otra oferta.');
     }
   }
 
@@ -105,12 +105,13 @@ export class OfertasService {
     };
   }
 
-  /** Catalogo publico: solo ofertas aprobadas con unidades disponibles. */
+  /** Catalogo publico: solo ofertas aprobadas con unidades disponibles.
+   *  D-64 (C2): las de cuentas bloqueadas quedan en pausa (no se muestran ni se emparejan). */
   async catalogo(categoriaId?: number) {
     const lista = await this.ofertas.find({
       where: categoriaId
-        ? { estado: EstadoOferta.APROBADA, categoriaId }
-        : { estado: EstadoOferta.APROBADA },
+        ? { estado: EstadoOferta.APROBADA, categoriaId, donador: { activo: true } }
+        : { estado: EstadoOferta.APROBADA, donador: { activo: true } },
       relations: { categoria: true },
       order: { creadaEn: 'DESC' },
     });
@@ -124,12 +125,26 @@ export class OfertasService {
       relations: { categoria: true },
       order: { creadaEn: 'DESC' },
     });
-    return Promise.all(lista.map((o) => this.aDetalle(o, false)));
+    // D-64 (C3): la pantalla muestra "Cancelar" solo si el servidor lo
+    // permitiria (misma regla que cancelar(): sin ningun intento de asignacion).
+    const conIntentos = new Set(
+      lista.length
+        ? (await this.asignaciones.find({ where: { ofertaId: In(lista.map((o) => o.id)) }, select: { ofertaId: true } })).map((a) => a.ofertaId)
+        : [],
+    );
+    return Promise.all(
+      lista.map(async (o) => ({
+        ...(await this.aDetalle(o, false)),
+        puedeCancelar:
+          [EstadoOferta.PENDIENTE_APROBACION, EstadoOferta.APROBADA].includes(o.estado) && !conIntentos.has(o.id),
+      })),
+    );
   }
 
   async colaAprobacion() {
     const lista = await this.ofertas.find({
-      where: { estado: EstadoOferta.PENDIENTE_APROBACION },
+      // D-64 (C2): lo de cuentas bloqueadas espera a que se desbloqueen.
+      where: { estado: EstadoOferta.PENDIENTE_APROBACION, donador: { activo: true } },
       relations: { categoria: true, donador: true },
       order: { creadaEn: 'ASC' },
     });
@@ -169,7 +184,7 @@ export class OfertasService {
     const suspendida = await this.calendario.recepcionSuspendida();
     if (suspendida) {
       throw new BadRequestException(
-        `La recepcion de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}). Intenta despues del cierre.`,
+        `La recepción de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}). Intenta después del cierre.`,
       );
     }
     const categoria = await this.categorias.obtenerActiva(datos.categoriaId);
@@ -262,7 +277,7 @@ export class OfertasService {
         estadoAnterior: EstadoOferta.APROBADA,
         estadoNuevo: EstadoOferta.PENDIENTE_APROBACION,
         actorId: donadorId,
-        motivo: 'El donador edito la oferta: vuelve a revision',
+        motivo: 'El donador edito la oferta: vuelve a revisión',
       });
     }
 
@@ -284,7 +299,7 @@ export class OfertasService {
     const intentos = await this.asignaciones.count({ where: { ofertaId: id } });
     if (intentos > 0) {
       throw new BadRequestException(
-        'La oferta ya fue asignada: el personal del LIS debe resolver la asignacion primero.',
+        'La oferta ya fue asignada: el personal del LIS debe resolver la asignación primero.',
       );
     }
 
@@ -321,7 +336,7 @@ export class OfertasService {
     const esPropia = oferta.donadorId === revisorId;
     if (esPropia && !revisorEsAdministrador) {
       throw new ForbiddenException(
-        `No puedes ${accion} tu propia donacion: debe revisarla otro auxiliar o un administrador.`,
+        `No puedes ${accion} tu propia donación: debe revisarla otro auxiliar o un administrador.`,
       );
     }
     return esPropia;
@@ -332,7 +347,7 @@ export class OfertasService {
     if (!oferta) throw new NotFoundException('La oferta no existe.');
     if (oferta.estado !== EstadoOferta.PENDIENTE_APROBACION) {
       throw new BadRequestException(
-        `Solo se aprueban ofertas pendientes. Esta esta en ${oferta.estado}.`,
+        `Solo se aprueban ofertas pendientes. Esta está en ${oferta.estado}.`,
       );
     }
     const esPropia = this.validarRevisionPropia(oferta, revisorId, revisorEsAdministrador, 'aprobar');
@@ -350,13 +365,13 @@ export class OfertasService {
       estadoNuevo: EstadoOferta.APROBADA,
       actorId: revisorId,
       motivo: esPropia
-        ? 'Autoaprobada por un administrador (su propia donacion)'
+        ? 'Autoaprobada por un administrador (su propia donación)'
         : 'Aprobada por el personal del LIS',
     });
     await this.notificaciones.aUsuarios([oferta.donadorId], {
       tipo: 'OFERTA_APROBADA',
-      titulo: 'Tu donacion fue aprobada',
-      mensaje: `Tu donacion "${oferta.nombreProducto}" fue aprobada y ya aparece en el catalogo.`,
+      titulo: 'Tu donación fue aprobada',
+      mensaje: `Tu donación "${oferta.nombreProducto}" fue aprobada y ya aparece en el catálogo.`,
       entidad: 'OFERTA',
       entidadId: id,
       clave: `OFERTA:${id}:APROBADA:${oferta.revisadaEn.toISOString()}`,
@@ -370,7 +385,7 @@ export class OfertasService {
     if (!oferta) throw new NotFoundException('La oferta no existe.');
     if (oferta.estado !== EstadoOferta.PENDIENTE_APROBACION) {
       throw new BadRequestException(
-        `Solo se rechazan ofertas pendientes. Esta esta en ${oferta.estado}.`,
+        `Solo se rechazan ofertas pendientes. Esta está en ${oferta.estado}.`,
       );
     }
     this.validarRevisionPropia(oferta, revisorId, revisorEsAdministrador, 'rechazar');
@@ -392,8 +407,8 @@ export class OfertasService {
     });
     await this.notificaciones.aUsuarios([oferta.donadorId], {
       tipo: 'OFERTA_RECHAZADA',
-      titulo: 'Tu donacion no fue aprobada',
-      mensaje: `Tu donacion "${oferta.nombreProducto}" no fue aprobada. Motivo: ${motivo}`,
+      titulo: 'Tu donación no fue aprobada',
+      mensaje: `Tu donación "${oferta.nombreProducto}" no fue aprobada. Motivo: ${motivo}`,
       entidad: 'OFERTA',
       entidadId: id,
       clave: `OFERTA:${id}:RECHAZADA`,
