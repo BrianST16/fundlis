@@ -1,5 +1,7 @@
 # Informe de la Etapa A: auditoría integral (2026-11-20)
 
+> **HISTÓRICO (línea base del 2026-11-20).** Este documento ya no describe el estado actual. El estado vigente está en `README.md`, `docs/01_decisiones_y_pendientes.md` (D-01 a D-67) y `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` (2026-11-26).
+
 > Versión archivada en el repositorio del informe presentado en la conversación de auditoría. El estado **vivo** de cada criterio está en `MATRIZ_CUMPLIMIENTO_RUBRICA.md` y el backlog en `PLAN_CIERRE_LIS.md`. Este documento conserva la **línea base** antes de los lotes de implementación.
 
 ## 1. Workspace y fuentes

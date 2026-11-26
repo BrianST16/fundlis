@@ -1,5 +1,7 @@
 # Registro de decisiones técnicas provisionales — LIS Dona
 
+> **HISTÓRICO (línea base del 2026-11-20).** Este documento ya no describe el estado actual. El estado vigente está en `README.md`, `docs/01_decisiones_y_pendientes.md` (D-01 a D-67) y `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` (2026-11-26). Las decisiones DT-01 a DT-06 siguen aplicadas en el código.
+
 > **Alcance:** decisiones técnicas **reversibles** tomadas durante la implementación autónoma supervisada. Las decisiones de negocio confirmadas y los pendientes siguen en `docs/01_decisiones_y_pendientes.md`. Aquí nada está aprobado por el profesor: todo es **[PROP]** salvo que se indique otra cosa.
 
 | ID | Fecha | Decisión | Motivo | Impacto | Cómo revertir |

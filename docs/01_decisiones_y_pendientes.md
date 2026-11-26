@@ -113,13 +113,30 @@
 | P-02 | **Cerrado provisionalmente** por D-32. Falta la confirmación escrita del profesor. |
 | P-03 | Implementado como PROPUESTA: primer administrador por `ADMIN_EMAILS` (README §7.8). Pendiente de aprobación. |
 | P-04 | Implementado como PROPUESTA (H-7a): cuentan `PENDIENTE_APROBACION` y `APROBADA`; una petición con asignación vigente sigue consumiendo cupo hasta su estado terminal. |
-| P-09 | **Bloqueante académico (H-2).** El código actual construye el KD-tree sobre dimensiones de prioridad. La hipótesis de diseño es separar compatibilidad (árbol) de prioridad (orden). Ver `planeacion/ANALISIS_PILAR_A_KDTREE.md`. |
+| P-09 | **Cerrado** por D-41 (2026-11-26): el KD-tree indexa compatibilidad (estado mínimo y rango de medida); la prioridad ordena después. Ver `planeacion/ANALISIS_PILAR_A_KDTREE.md`. |
 | P-13 | Enfoque decidido (D-36); detalle en P-24. Implementado: JPEG/PNG/WebP, máximo 2 MB, verificación de firma binaria. |
 | P-15 | **Cerrado** por D-34. |
 | P-16 | **Cerrado** por D-33. |
 | P-19 | Implementado como PROPUESTA (H-7b): la oferta se aprueba o rechaza completa. |
 | P-20 | Implementado como PROPUESTA (H-7d): las fotos de movimientos físicos solo las ve el personal del LIS. |
 | P-22 | Implementado como PROPUESTA (H-7c): el donador no cancela una oferta con cualquier intento de asignación; el remanente no se cancela automáticamente. |
+
+### 2.2 Estado de pendientes al 2026-11-26
+
+| ID | Estado |
+|---|---|
+| P-05 | **Cerrado** por D-43 y D-50: `DESTINO_LOCAL` con lote físico, sin petición ficticia. |
+| P-06 | **Cerrado** por D-18: se cancela el intento y se crea una oferta nueva por lo recibido. |
+| P-07 | **Cerrado** por D-58 y D-61: una prórroga de 5 días hábiles para el donador (`MAX_APLAZAMIENTOS_DONADOR`, `PLAZO_APLAZAMIENTO_DONADOR_DIAS_HABILES`). |
+| P-08 | **Cerrado** por D-60 a D-62: plazos y esperas de Local con fecha y tope. |
+| P-10 | **Cerrado** en fórmula por D-38. Los pesos 0,5 / 0,3 / 0,2 y la escala Sisbén siguen como propuesta. |
+| P-11 | Fórmulas implementadas (D-40). Los pesos siguen como propuesta. |
+| P-12 | **Cerrado**: festivos calculados (Ley 51 de 1983 y Pascua); cierres en `CIERRE_LIS`, con suspensión anticipada `DIAS_ANTICIPACION_CIERRE`. |
+| P-14 | **Abierto.** Eliminación excepcional con reautenticación de Google: no implementada. |
+| P-17, P-24 | La devolución registra un movimiento con foto; fotos JPEG, PNG o WebP de hasta 2 MB. |
+| P-18 | **Cerrado** por D-50: la aceptación para el LIS deja el lote como patrimonio (`PATRIMONIO_LIS`). |
+| P-23 | **Cerrado** por D-48: se reasigna desde custodia sin repetir la recepción. |
+| P-60 | Fuera del alcance por ahora. |
 
 Las decisiones técnicas provisionales tomadas durante la implementación se registran en `docs/planeacion/REGISTRO_DECISIONES.md`.
 

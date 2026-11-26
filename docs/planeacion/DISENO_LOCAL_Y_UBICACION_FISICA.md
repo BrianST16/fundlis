@@ -1,5 +1,7 @@
 # Diseño: destino LOCAL y ubicación física del producto (T3.1)
 
+> **HISTÓRICO (línea base del 2026-11-20).** Este documento ya no describe el estado actual. El estado vigente está en `README.md`, `docs/01_decisiones_y_pendientes.md` (D-01 a D-67) y `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` (2026-11-26). El diseño se implementó en las migraciones 004 y 010 (`LOTE_FISICO`, `DESTINO_LOCAL`), con ajustes de D-43, D-50 y D-60 a D-62.
+
 | Campo | Valor |
 |---|---|
 | Fecha | 2026-11-20 |

@@ -11,12 +11,19 @@ Tres componentes independientes:
 | Backend | NestJS + TypeScript + TypeORM | 3000 |
 | Base de datos | SQL Server Express | 1433 |
 
-> **Estado verificado (2026-11-24):** el backend y el frontend **compilan** y el
-> backend pasa **171/171 pruebas unitarias** (`npm test`, 12 suites, datos
-> ficticios, sin BD). Las correcciones 1 a 11 se probaron manualmente contra la BD
-> de desarrollo `LisDona` (SQL Server Express) y en el navegador. Pendientes:
-> corrección 12 (correo, D-53) y despliegue. Las decisiones vigentes están en
-> `docs/01_decisiones_y_pendientes.md` (D-45 a D-53 son las de este ciclo).
+> **Estado verificado (2026-11-26):**
+>
+> - **Pruebas:** el backend pasa **237/237 pruebas unitarias** (`npm test`, 18
+>   suites, datos ficticios, sin BD).
+> - **Compilación:** backend y frontend compilan para producción. El bundle
+>   inicial del frontend pesa 327 kB (93 kB transferidos).
+> - **Pruebas manuales:** el flujo completo se probó contra la BD de desarrollo
+>   `LisDona` (SQL Server Express) y en el navegador.
+> - **Pendientes:** correo (D-53, fuera del alcance por ahora), despliegue y
+>   pruebas con Postman.
+> - **Decisiones:** las vigentes están en `docs/01_decisiones_y_pendientes.md`.
+>   D-54 a D-67 son las del último ciclo (estructura de páginas, plazos y
+>   esperas, seguridad, textos y paleta).
 
 ---
 
@@ -187,14 +194,19 @@ El flujo completo, en el orden en que conviene mostrarlo:
    donación con categoría, cantidad y fotografía.
 4. **Vuelve a la cuenta del LIS → Aprobaciones.** Aprueba la donación y las
    peticiones.
-5. **Emparejamiento.** Elige la donación: el KD-tree propone los estudiantes
-   compatibles ordenados por prioridad. En el encabezado se ve cuántos nodos
-   visitó el árbol frente a la búsqueda lineal y una marca de verificación de que
-   ambos coinciden. Fija la cantidad y confirma el beneficiario.
-6. **Custodia y entregas → "Por recibir".** Registra la recepción física con foto
+5. **Emparejamiento.** Elige la donación (con foto y descripción). El KD-tree
+   encuentra las peticiones **compatibles** por estado y talla, y la prioridad las
+   ordena. El diagnóstico muestra compatibles y excluidas, nodos visitados,
+   tiempos de construcción y consulta, y la verificación contra el filtro lineal.
+   **Local** aparece siempre al final. Fija la cantidad y confirma el
+   beneficiario.
+6. **Entregas y plazos → "Por recibir".** Registra la recepción física con foto
    y el nombre de quien entrega. La asignación pasa a EN_CUSTODIA.
 7. **"En custodia" → Registrar entrega.** Con foto y nombre de quien recibe. La
-   petición se cierra por entrega.
+   petición se cierra por entrega y el donador recibe la foto en su bandeja.
+8. **Lo que vence** aparece como decisión pendiente en la tarjeta de su objeto:
+   en *Entregas y plazos* para las asignaciones y en *Local y lotes* para Local y
+   los lotes. El menú muestra el número de decisiones pendientes.
 
 Para repartir una donación entre varios estudiantes, asigna cantidades parciales
 de la misma oferta a peticiones distintas: el saldo se recalcula solo.
@@ -225,29 +237,36 @@ cuentas deben haber iniciado sesión al menos una vez.
 
 ## 3. Modelo de datos
 
-12 tablas. Las cantidades **no se almacenan**: se derivan de los intentos de
-asignación, de modo que hay una sola fuente de verdad.
+22 tablas: `db/01_schema.sql` más las migraciones 003 a 014. Los saldos **no se
+almacenan**: se derivan de los intentos de asignación y de los lotes físicos
+(`VW_OFERTA_SALDO`), de modo que hay una sola fuente de verdad.
+
+| Grupo | Tablas |
+|---|---|
+| Identidad | `USUARIO`, `USUARIO_ROL` |
+| Caracterización | `CARACTERIZACION`, `PREGUNTA_CARACTERIZACION`, `OPCION_CARACTERIZACION`, `RESPUESTA_CARACTERIZACION`, `GRUPO_SISBEN`, `CERTIFICADO_ESTUDIO` |
+| Flujo central | `CATEGORIA`, `OFERTA`, `PETICION`, `OFERTA_X_PETICION` |
+| Ubicación física y Local | `LOTE_FISICO`, `DESTINO_LOCAL`, `MOVIMIENTO`, `EVIDENCIA` |
+| Ciclo de vida | `TAREA`, `NOTIFICACION`, `CORREO_SALIDA`, `CIERRE_LIS`, `PARAMETRO` |
+| Auditoría | `HISTORIAL_ESTADO` (inmutable: el trigger `TR_HISTORIAL_INMUTABLE` rechaza `UPDATE` y `DELETE`) |
 
 ```
 USUARIO ──< USUARIO_ROL
-   │
-   ├──< CARACTERIZACION ──< RESPUESTA_CARACTERIZACION >── OPCION_CARACTERIZACION
-   │         │                                                    │
-   │         └── GRUPO_SISBEN                      PREGUNTA_CARACTERIZACION
-   │
-   ├──< OFERTA >── CATEGORIA ──< PETICION >──┐
-   │      │                                   │
-   │      └──────< OFERTA_X_PETICION >────────┘
-   │                     │
-   │                     └──< MOVIMIENTO >── EVIDENCIA
-   │
-   └──< HISTORIAL_ESTADO                          PARAMETRO
+   ├──< CARACTERIZACION ──< RESPUESTA ── OPCION ── PREGUNTA      (+ GRUPO_SISBEN, CERTIFICADO_ESTUDIO)
+   ├──< OFERTA >── CATEGORIA ──< PETICION
+   │      ├──< OFERTA_X_PETICION >──────────┘   (intento de asignación)
+   │      ├──< LOTE_FISICO   (dónde está físicamente el producto)
+   │      └──< DESTINO_LOCAL (destino institucional, nunca una petición ficticia)
+   │                MOVIMIENTO ── EVIDENCIA      (recepción, entrega, devolución con foto)
+   ├──< TAREA (DEFINIR_ESTADO) · NOTIFICACION ──< CORREO_SALIDA
+   └──< HISTORIAL_ESTADO                         PARAMETRO · CIERRE_LIS
 ```
 
 ### Máquinas de estado
 
 **OFERTA**
-`PENDIENTE_APROBACION` → `APROBADA` → `CERRADA`
+`PENDIENTE_APROBACION` → `APROBADA` → `CERRADA` (también automática al agotarse
+el saldo, D-64)
 `PENDIENTE_APROBACION` → `RECHAZADA` · `{PENDIENTE, APROBADA}` → `CANCELADA`
 
 **PETICION**
@@ -259,9 +278,28 @@ USUARIO ──< USUARIO_ROL
 `EN_CUSTODIA` → `DEVOLUCION`
 `{ASIGNADO, EN_CUSTODIA}` → `CANCELADO`
 
+**DESTINO_LOCAL**
+`ESPERA_RECEPCION` → `CUSTODIA_TEMPORAL` → `PROPUESTO_DONADOR` → `ACEPTADO` |
+`POR_DEVOLVER` → `DEVUELTO`
+`CUSTODIA_TEMPORAL` → `REASIGNADO` (se empareja con un estudiante) ·
+`ESPERA_RECEPCION` → `CANCELADO`
+
+**TAREA** `ABIERTA` → `RESUELTA`, con la decisión y su motivo.
+
 No hay recepción ni entrega parcial de una misma asignación: `CANCELADO` no
 significa que el producto salió físicamente del LIS, y `DEVOLUCION` no es lo
 mismo que cancelar el vínculo.
+
+### Plazos y esperas (días hábiles de Colombia, parámetros en `PARAMETRO`)
+
+| Situación | Plazo | Al vencer |
+|---|---|---|
+| Donador lleva el producto al LIS | 10 | Una prórroga de 5, o cancelar |
+| Estudiante recoge | 3 | Una extensión de 3, reasignar, custodia Local o devolución |
+| Donador lleva el producto destinado a Local | 10 | Una prórroga de 5, o cancelar (D-61) |
+| Custodia temporal Local y lote sin destino | 3 | Esperar 5 más, hasta 2 veces (D-60) |
+| Propuesta al donador para que quede en el LIS | 5 | Esperar sin tope, siempre con fecha (D-61) |
+| Devolución que el donador no retira | 5 | Una espera; después el administrador decide: custodia Local o recibir para el LIS. El administrador puede dar más tiempo aunque no queden esperas (D-62). |
 
 ### Invariantes garantizadas
 
@@ -274,69 +312,98 @@ mismo que cancelar el vínculo.
 | Una petición activa fue revisada por alguien | `CK_PETICION_revision` |
 | Quien aprueba no es quien publicó | comprobado en el servicio |
 | Nunca queda la plataforma sin administradores | comprobado al revocar y al bloquear |
+| Un lote físico tiene un solo titular vigente (intento o Local) | vistas indexadas `VW_LOTE_TITULAR_OXP` y `VW_LOTE_TITULAR_LOCAL` |
+| Una tarea o un aviso no se duplican | índices únicos `UX_TAREA_clave` y `UX_NOTIF_usuario_clave` |
+| El historial no se altera | trigger `TR_HISTORIAL_INMUTABLE` (migración 014) |
+| Una tarea se cierra con la acción que la resuelve | `cerrarTareasDe` en la misma transacción (D-56) |
+| Una cuenta con mediaciones en curso no se bloquea | `UsuariosService.bloquear`, que además cierra sus publicaciones (D-64) |
 
 ---
 
-## 4. El pilar del algoritmo: KD-tree adaptativo
+## 4. El pilar del algoritmo: KD-tree adaptativo de compatibilidad
 
-`backend/src/emparejamiento/kdtree.ts`
+`backend/src/emparejamiento/kdtree.ts` · `compatibilidad.ts` · `prioridad.ts`.
+Análisis completo, benchmark y mejoras: `docs/planeacion/ANALISIS_PILAR_A_KDTREE.md`.
 
-Un árbol por categoría. La categoría es una **condición de igualdad**, nunca una
-distancia: no tiene sentido medir cuánto dista "Tecnología" de "Ropa y calzado".
+**Qué busca (D-41).** Las peticiones **compatibles** con una donación:
 
-Tres dimensiones reales, todas normalizadas a [0,1] donde 1 es mayor necesidad:
+1. **Misma categoría.** Se filtra por igualdad, nunca como distancia: no tiene
+   sentido medir cuánto dista "Tecnología" de "Ropa y calzado".
+2. **Estado.** El estado de conservación de la oferta es mayor o igual al estado
+   mínimo que exige la petición.
+3. **Medida.** La talla o medida de la oferta cae dentro del rango que acepta la
+   petición, cuando la categoría usa medida.
 
-0. puntaje de caracterización socioeconómica
-1. necesidad asociada al grupo Sisbén
-2. antigüedad de la petición
-
-El candidato ideal es el punto (1, 1, 1). Los candidatos se ordenan por distancia
-euclídea ponderada a ese punto:
+Cada petición es un punto 3D `(estadoMinimo, medidaMin, medidaMax)`, y la oferta
+define una caja:
 
 ```
-d(p) = √( Σ wᵢ · (1 − pᵢ)² )
+estadoMinimo ∈ [1, estado]   medidaMin ∈ [−∞, medida]   medidaMax ∈ [medida, +∞]
 ```
 
-Los pesos están en `PARAMETRO` (0.50 / 0.30 / 0.20 como propuesta) y se
-normalizan para que sumen 1. Como las coordenadas están en [0,1] y los pesos
-suman 1, la distancia máxima es 1, así que el puntaje de prioridad que ve el
-auxiliar es `1 − d(p)`, dentro de [0,1].
+Es una **búsqueda por rango ortogonal**, el problema para el que existe el
+KD-tree. Ordenar por un solo puntaje no la resuelve. El sentido inverso, de una
+petición a las ofertas compatibles, usa un árbol 2D (`GET
+/api/emparejamiento/peticion/:id`).
 
-**Por qué "adaptativo":** un KD-tree clásico alterna los ejes de corte en orden
-fijo (0,1,2,0,1,2…). Esta versión elige en cada nodo el eje de **mayor
-dispersión** del subconjunto y corta por su mediana. Con datos desbalanceados
-—por ejemplo, si casi todos los estudiantes declaran el mismo grupo Sisbén— eso
-produce particiones más útiles y menos nodos visitados.
+**Por qué "adaptativo".** Un KD-tree clásico alterna los ejes en orden fijo.
+Este elige en cada nodo el eje de **mayor dispersión** y corta por su mediana.
+La consulta poda las ramas que no pueden tocar la caja.
 
-**Complejidad:** construcción O(n log²n) con esta implementación; k-NN O(log n + k)
-esperado y O(n) en el peor caso; memoria O(n).
+**Después, la prioridad (D-38).** Solo los compatibles se ordenan por
 
-**Verificación.** `kdtree.spec.ts` compara el árbol contra una búsqueda lineal de
-referencia en 400 conjuntos aleatorios, un tercio de ellos con poca granularidad
-para forzar empates. Resultado ejecutado el 2026-11-20: **0 discrepancias**
-(7/7 pruebas). El desempate es un orden total explícito (distancia, luego
-`peticionId`) precisamente para que ambos métodos sean comparables elemento por
-elemento.
+```
+P = 0,5·C + 0,3·S + 0,2·A        A = min(1, días desde la petición / 90)
+```
 
-**Rendimiento y límites (benchmark del 2026-11-20).**
-`backend/scripts/benchmark-kdtree.ts` muestra que consultar un árbol **ya
-construido** visita una fracción mínima de los nodos (24 de 100.000). En cambio,
-**reconstruirlo en cada consulta**, como hace hoy el servicio, es más lento
-que un recorrido lineal top-k. Además, el árbol indexa variables de
-**prioridad**, no de **compatibilidad**. Es una decisión abierta (H-2):
-ver `docs/planeacion/ANALISIS_PILAR_A_KDTREE.md`. La cifra "21,8 %" de una
-versión anterior de este README no se verificó y se retiró.
+con caracterización C, Sisbén S y antigüedad A en [0,1]. Los pesos y el
+horizonte están en `PARAMETRO`. P es un número real, no un porcentaje.
+**Local** aparece siempre al final de la lista.
+
+**Complejidad:**
+
+- construcción O(n log² n);
+- consulta O(n^(1−1/k) + m), donde m es el número de resultados;
+- memoria O(n).
+
+**Verificación:**
+
+- `kdtree.spec.ts` (9 casos) compara el árbol con el filtro lineal en 400
+  conjuntos aleatorios. También comprueba que las cajas 3D y 2D equivalen al
+  predicado de compatibilidad en 2.000 pares cada una.
+- En producción, **cada consulta** se compara con el filtro lineal; la
+  pantalla muestra `coincideConFiltroLineal`, los nodos visitados y los tiempos
+  de construcción y consulta.
+
+**Benchmark (2026-11-26), en ms por consulta.** "Coincide" = coincide con el
+filtro lineal.
+
+| Escenario | n | Filtro lineal | Construir + consultar (hoy) | Solo consultar | Nodos visitados | Coincide |
+|---|---:|---:|---:|---:|---:|:---:|
+| `lis`: ~42 % compatibles | 1.000 | 0,033 | 1,555 | 0,139 | 50 % | sí |
+| `lis` | 100.000 | 3,867 | 297,550 | 25,209 | 44 % | sí |
+| `selectivo`: ~1 % compatibles | 1.000 | 0,020 | 1,714 | 0,006 | 9,6 % | sí |
+| `selectivo` | 100.000 | 1,872 | 427,005 | **0,891** | **3,0 %** | sí |
+
+Cómo leer la tabla:
+
+- **Consulta selectiva:** el árbol poda el 97 % de los nodos y la consulta es
+  unas 2 veces más rápida que el filtro lineal.
+- **Datos del LIS:** casi la mitad de las peticiones son compatibles, así que
+  ningún índice puede visitar menos de ese 42 %. El árbol visita el 44 %, y el
+  filtro lineal gana por factores constantes.
+- **Costo actual:** lo domina la **construcción**, porque el árbol se
+  reconstruye en cada consulta.
+- **Volumen real del LIS:** todo tarda menos de 2 ms.
 
 ```bash
-cd backend && npm test
+cd backend
+npx ts-node --transpile-only scripts/benchmark-kdtree.ts lis
+npx ts-node --transpile-only scripts/benchmark-kdtree.ts selectivo
 ```
 
-La API además devuelve el diagnóstico en cada consulta
-(`nodosVisitadosArbol`, `nodosRecorridoLineal`, `coincideConBusquedaLineal`), que
-es lo que se ve en el panel de emparejamiento.
-
-**La decisión nunca es del algoritmo:** el árbol sugiere y ordena; el auxiliar
-confirma el beneficiario y fija la cantidad.
+**La decisión nunca es del algoritmo:** el árbol encuentra los compatibles y
+la prioridad los ordena; el auxiliar confirma el beneficiario y fija la cantidad.
 
 ---
 
@@ -350,14 +417,33 @@ del ID token, y de ahí saca el correo:
 - cualquier otro dominio verificado → `DONADOR`
 
 Los perfiles son excluyentes por cuenta: quien quiera participar como ambos
-necesita dos cuentas de Google. Los roles `AUXILIAR_LIS` y `ADMINISTRADOR` son
-aditivos y los otorga un administrador, salvo el primero, que sale de
-`ADMIN_EMAILS`.
+necesita dos cuentas de Google. Los roles son aditivos:
+
+| Rol | Quién lo otorga | Qué agrega |
+|---|---|---|
+| `AUXILIAR_LIS` | un administrador. Solo a cuentas no institucionales. | Operación del LIS |
+| `ADMINISTRADOR` | el primero sale de `ADMIN_EMAILS`; los demás los otorga solo un superusuario | Caracterización sensible, usuarios, Local para el LIS, trazabilidad |
+| `SUPERUSUARIO` | **solo por script de BD** (`db/scripts/asignar_superusuario.sql`, D-45) | Gestiona a los administradores; hereda todo |
 
 Tras verificar el token, el backend emite su propio JWT (8 h) con el id de
 usuario, el perfil y los roles. El frontend lo guarda y lo adjunta en cada
-petición. Las pantallas que el frontend oculta según el rol son solo comodidad:
-el control real está en los guards del backend.
+petición.
+
+**El control real está en el backend.** `JwtGuard` y `RolesGuard` son
+globales: toda ruta exige sesión salvo las marcadas `@Publico`. El estado y los
+roles se **releen de la BD en cada petición**, así que un bloqueo o una
+revocación surte efecto inmediato (403). Las pantallas que Angular oculta
+según el rol son solo comodidad.
+
+Otras defensas del backend (D-65):
+
+- `ValidationPipe` con `whitelist` y `forbidNonWhitelisted`;
+- cabeceras de seguridad (CSP cerrada, nosniff, anti-iframe, HSTS en
+  producción);
+- límite de peticiones por IP (login 10/min, fotos 30, certificado 10,
+  general 300) con respuesta 429;
+- nombres de archivo saneados en las descargas;
+- un usuario de BD con mínimo privilegio (`db/scripts/crear_usuario_app.sql`).
 
 ### Matriz de visibilidad
 
@@ -372,10 +458,13 @@ el control real está en los guards del backend.
 Las fotografías se guardan dentro de SQL Server (`VARBINARY(MAX)` con MIME,
 tamaño y hash SHA-256) y nunca se sirven como URL pública: pasan por
 `GET /api/evidencias/:id`, que decide caso por caso quién puede verlas. La foto
-de una oferta aprobada es visible porque muestra el producto; la de un movimiento
-físico solo la ven el personal del LIS y las dos partes implicadas. El servicio
-también comprueba los bytes iniciales del archivo para no aceptar un ejecutable
-disfrazado de imagen.
+de una oferta aprobada es visible porque muestra el producto. La de un
+movimiento físico (recepción, entrega, devolución) solo la ve el personal del LIS.
+Hay una excepción: el donador recibe en su bandeja la foto de la entrega final,
+y solo él la ve (D-51). El servicio también comprueba los bytes iniciales del
+archivo para no aceptar un ejecutable disfrazado de imagen. El certificado de
+estudio (opcional, D-46) solo lo ven su dueño y el administrador, y se sirve con
+`Cache-Control: no-store`.
 
 ---
 
@@ -383,41 +472,81 @@ disfrazado de imagen.
 
 Todas las rutas van bajo `/api`. Las marcadas con 🔓 no necesitan token.
 
+**Quién puede llamarlas:**
+
+- **LIS** = `AUXILIAR_LIS` o superior.
+- **Admin** = `ADMINISTRADOR` o `SUPERUSUARIO`.
+- **Autenticado** = cualquier sesión. El servicio filtra lo propio.
+
+### Acceso, catálogo y categorías
+
 | Método | Ruta | Quién |
 |---|---|---|
 | GET | 🔓 `/salud` | cualquiera |
-| POST | 🔓 `/auth/google` | cualquiera |
-| GET | `/auth/yo` | autenticado |
+| POST | 🔓 `/auth/google` | cualquiera (límite de 10 por minuto por IP) |
+| GET · POST | `/auth/yo` · `/auth/salir` | autenticado |
 | GET | 🔓 `/categorias` | cualquiera |
-| POST · PATCH | `/categorias`, `/categorias/:id` | administrador |
-| GET | 🔓 `/ofertas/catalogo` | cualquiera |
-| GET | `/ofertas/mias` | donador |
-| GET | `/ofertas/pendientes` | LIS |
-| POST · PATCH | `/ofertas`, `/ofertas/:id`, `/ofertas/:id/cancelar` | donador |
-| PATCH | `/ofertas/:id/aprobar` · `/rechazar` · `/cerrar` | LIS |
-| GET | 🔓 `/peticiones/catalogo` | cualquiera |
-| GET | `/peticiones/mias`, `/peticiones/mi-cupo` | estudiante |
-| GET | `/peticiones/pendientes` | LIS |
-| POST · PATCH | `/peticiones`, `/peticiones/:id`, `/peticiones/:id/cancelar` | estudiante |
-| PATCH | `/peticiones/:id/aprobar` · `/rechazar` | LIS |
-| GET · PUT | `/caracterizacion/formulario`, `/caracterizacion/mia` | estudiante |
-| GET | `/caracterizacion/usuario/:id` | administrador |
-| GET | `/emparejamiento/oferta/:id` | LIS |
-| GET | `/asignaciones`, `/asignaciones/:id` | LIS · partes implicadas |
-| GET | `/asignaciones/mias` | autenticado |
-| POST | `/asignaciones` | LIS |
-| POST | `/asignaciones/:id/recepcion` · `/entrega` · `/cancelar` · `/marcar-devolucion` · `/devolucion` | LIS |
-| POST | `/evidencias` | autenticado |
-| GET | 🔓 `/evidencias/:id` | según el caso |
-| GET · POST · PATCH | `/usuarios/...` | administrador |
-| GET | `/plazos/bandeja?estado=VENCIDO` · `/plazos/resumen` · `/plazos/calendario?anio=` | LIS |
-| GET | `/plazos/mios` | autenticado (solo sus propios plazos) |
-| GET | `/analitica/indicadores` · `/analitica/ranking/estudiantes` · `/analitica/ranking/donadores` · `/analitica/alertas` | LIS |
+| POST · PATCH | `/categorias` · `/categorias/:id` · `/categorias/:id/medida` | admin |
+| GET | 🔓 `/ofertas/catalogo` · 🔓 `/ofertas/:id` | cualquiera (anónimo) |
+| GET | 🔓 `/peticiones/catalogo` · 🔓 `/peticiones/:id` | cualquiera (anónimo) |
 
-Notas de privacidad (2026-11-20): el token JWT solo prueba la identidad; el
-estado y los roles se releen de la BD en cada petición, así que un bloqueo o una
-revocación surte efecto inmediato. Las fotos de movimientos físicos
-(recepción, entrega, devolución) solo las ve el personal del LIS.
+### Ofertas y peticiones
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/ofertas/mias` | donador |
+| POST · PATCH | `/ofertas` · `/ofertas/:id` · `/ofertas/:id/cancelar` | donador |
+| GET | `/ofertas/pendientes` · `/ofertas/:id/historial` | LIS |
+| PATCH | `/ofertas/:id/aprobar` · `/rechazar` · `/cerrar` | LIS (no puede aprobar las propias, salvo admin, D-47) |
+| GET | `/peticiones/mias` · `/peticiones/mi-cupo` | estudiante |
+| POST · PATCH | `/peticiones` · `/peticiones/:id` · `/peticiones/:id/cancelar` | estudiante |
+| GET | `/peticiones/pendientes` · `/peticiones/:id/historial` | LIS |
+| PATCH | `/peticiones/:id/aprobar` · `/rechazar` | LIS |
+
+### Caracterización
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/caracterizacion/formulario` | autenticado |
+| GET · PUT | `/caracterizacion/mia` | estudiante |
+| GET · PUT · DELETE | `/caracterizacion/mia/certificado` (+ `/archivo`) | estudiante |
+| GET | `/caracterizacion/usuario/:id` (+ `/certificado`, `/certificado/archivo`) | admin |
+| PATCH | `/caracterizacion/usuario/:id/certificado/revision` | admin |
+
+### Emparejamiento, asignaciones y Local
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/emparejamiento/oferta/:id` · `/lote/:id` · `/peticion/:id` | LIS |
+| GET | `/asignaciones` | LIS |
+| GET | `/asignaciones/mias` · `/asignaciones/:id` | autenticado (solo lo propio) |
+| POST | `/asignaciones` · `/asignaciones/desde-lote` | LIS |
+| POST | `/asignaciones/:id/recepcion` · `/entrega` · `/cancelar` · `/reasignar` · `/prorrogar` · `/marcar-devolucion` · `/devolucion` | LIS |
+| GET | `/local` · `/local/lotes` · `/local/:id` | LIS |
+| POST | `/local/desde-oferta` · `/desde-lote` · `/:id/recepcion` · `/:id/cancelar` · `/:id/devolucion` | LIS |
+| POST | `/local/:id/proponer` · `/:id/retirar-propuesta` | admin |
+| GET · POST | `/local/donador/propuestas` · `/local/donador/propuestas/:id/responder` | donador |
+
+### Evidencias, tareas, plazos y avisos
+
+| Método | Ruta | Quién |
+|---|---|---|
+| POST | `/evidencias` | autenticado |
+| GET | 🔓 `/evidencias/:id` | según el caso, que decide el servicio |
+| GET · POST | `/tareas` · `/tareas/revisar` · `/tareas/:id/resolver` | LIS |
+| GET | `/plazos/bandeja` · `/plazos/resumen` · `/plazos/calendario?anio=` | LIS |
+| GET | `/plazos/mios` | autenticado (solo sus propios plazos) |
+| GET · PATCH | `/notificaciones` · `/no-leidas` · `/leer-todas` · `/:id/leida` | autenticado |
+| GET · POST | `/notificaciones/correo/estado` · `/procesar` · `/reencolar` | admin |
+
+### Analítica, trazabilidad y usuarios
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/analitica/indicadores` · `/ranking/estudiantes` · `/ranking/donadores` · `/alertas` | LIS |
+| GET | `/trazabilidad/oferta/:id` | admin |
+| GET | `/usuarios` · `/usuarios/:id` | admin |
+| POST · PATCH | `/usuarios/:id/roles` · `/roles/revocar` · `/bloquear` · `/desbloquear` | admin (el rol y el bloqueo de un administrador, solo el superusuario) |
 
 ---
 
@@ -426,14 +555,15 @@ revocación surte efecto inmediato. Las fotos de movimientos físicos
 Estos puntos estaban abiertos en el anteproyecto y hubo que resolverlos para que
 el MVP funcionara. Conviene revisarlos con el equipo y con el profesor.
 
-1. **Dimensiones del KD-tree:** caracterización, Sisbén y antigüedad, con el
-   punto ideal (1,1,1) y distancia euclídea ponderada. Los pesos 0.50 / 0.30 /
-   0.20 son un punto de partida, configurables en `PARAMETRO`.
-2. **Escala de Sisbén:** A = 1.00 descendiendo hasta D ≈ 0.01, monótona dentro de
-   cada letra y entre letras. Es una propuesta, no una escala oficial.
-3. **Antigüedad:** días desde la creación divididos por el máximo entre los
-   candidatos de esa consulta. Si todas las peticiones son del mismo instante, la
-   dimensión no discrimina y queda en 0 para todas.
+1. **Pesos de prioridad:** 0,50 para caracterización, 0,30 para Sisbén y 0,20
+   para antigüedad, con un horizonte de 90 días. La fórmula está confirmada
+   (D-38); los valores son una propuesta y se pueden configurar en `PARAMETRO`.
+2. **Escala de Sisbén:** `GRUPO_SISBEN.puntaje_necesidad`, de A = 1,00
+   descendiendo hasta D, monótona dentro de cada letra y entre letras. Es una
+   equivalencia del proyecto, no una escala oficial del DNP.
+3. **Atributos de compatibilidad:** estado de conservación de 1 a 5 y una medida
+   numérica por categoría (`CATEGORIA.medida_nombre`). Si la oferta no declara
+   medida, solo son compatibles las peticiones sin rango.
 4. **Cancelar una oferta:** el donador solo puede hacerlo mientras no tenga
    ninguna asignación. Después debe intervenir el LIS. Editar una oferta ya
    aprobada la devuelve a revisión.
@@ -449,57 +579,106 @@ el MVP funcionara. Conviene revisarlos con el equipo y con el profesor.
    institucional, su perfil será ESTUDIANTE y además tendrá el rol
    ADMINISTRADOR; el rol no depende del perfil.
 9. **Fotografías:** JPEG, PNG o WebP, máximo 2 MB, dentro de SQL Server.
+10. **Plazos de las esperas:** los valores de la tabla del §3 (5 días hábiles, 2
+    esperas, 1 prórroga, etc.) se acordaron con el equipo. Un panel para que el
+    administrador los edite queda fuera del alcance (P-60).
 
-## 8. Qué incluye y qué falta (actualizado 2026-11-20)
+## 8. Qué incluye y qué falta (actualizado 2026-11-26)
 
-**Agregado en los lotes del 2026-11-20 (con pruebas unitarias):**
+**Incluido y probado.** Cada punto tiene pruebas unitarias, y el flujo se probó
+a mano contra la BD de desarrollo.
 
-- **Pilar B (parcial):** calendario hábil colombiano con festivos **calculados**
-  (Ley 51 de 1983 y Pascua) y cierres del LIS configurables
-  (`PARAMETRO.CIERRES_LIS`); plazos de 10 y 3 días hábiles; lo vencido es una
-  tarea `DEFINIR_ESTADO` que se decide en la página de su objeto (*Entregas y
-  plazos* o *Local y lotes*), con contadores en el menú (D-59); los plazos propios del donador y del estudiante se ven en el
-  seguimiento de cada tarjeta de *Mis donaciones* / *Mis peticiones* (D-54).
-- **Pilar C:** indicadores, ranking de estudiantes y de donadores (separado de
-  la prioridad) y alertas de incumplimiento; pantalla *Analítica*. La fórmula
-  está en `backend/src/analitica/formulas.ts`.
-- **Correcciones:**
-  - el catálogo oculta las peticiones asignadas;
-  - una recepción incompleta ya no duplica inventario;
-  - el límite de 5 es transaccional;
-  - la devolución exige la cantidad completa;
-  - IDOR de fotos cerrado;
-  - un auxiliar no puede ser una cuenta UdeA;
-  - `/salud` no expone errores del motor.
+- **Identidad:** Google OIDC verificado en el backend, perfil por dominio,
+  perfiles excluyentes, roles auxiliar, administrador y superusuario, y bloqueo
+  con efecto inmediato.
+- **Flujo central:**
+  - publicar y aprobar ofertas y peticiones;
+  - catálogo anónimo y límite de 5;
+  - `OFERTA_X_PETICION` con fraccionamiento y una sola asignación vigente;
+  - recepción y entrega con foto, sin recepción parcial;
+  - devolución, reasignación desde custodia y cancelación con causa (D-57);
+  - cierre automático de ofertas agotadas (D-64).
+- **Local:**
+  - espera de recepción, custodia temporal y emparejamiento desde Local;
+  - propuesta al donador con su consentimiento y aceptación por el
+    administrador;
+  - devolución y trazabilidad (D-43, D-50, D-52).
+- **Pilar A, emparejamiento:** KD-tree adaptativo de compatibilidad, prioridad
+  ponderada, Local al final, verificación lineal en cada consulta y confirmación
+  humana.
+- **Pilar B, ciclo de vida:**
+  - calendario hábil colombiano con festivos calculados y cierres del LIS;
+  - la recepción de donaciones se suspende `DIAS_ANTICIPACION_CIERRE` días
+    hábiles antes de un cierre;
+  - plazos, prórrogas y esperas con tope;
+  - tareas `DEFINIR_ESTADO` que se deciden en la tarjeta de su objeto;
+  - revisor automático cada 15 minutos;
+  - avisos en la bandeja interna, con foto de la entrega para el donador.
+- **Pilar C, analítica:** indicadores, ranking de estudiantes y de donadores
+  separado de la prioridad, alertas, estudiantes en riesgo resaltados y
+  avisados al personal (D-55), y donador recurrente en *Aprobaciones* (D-49).
+- **Seguridad:**
+  - guards globales y validación estricta;
+  - cabeceras de seguridad y límite de peticiones;
+  - historial inmutable;
+  - usuario de BD con mínimo privilegio;
+  - privacidad de fotos y caracterización en el backend.
+- **Interfaz:** menú lateral plegable con contadores, paginación, modo oscuro y
+  paleta de cuatro colores (D-63, D-67).
 
-**Sigue fuera o bloqueado:**
+**Fuera del alcance o pendiente:**
 
-- Tareas y notificaciones **persistentes**, **correo**, aplazar o extender
-  plazos y suspensión anticipada por vacaciones: requieren esquema nuevo (H-9) y
-  SMTP (H-6).
-- Destino institucional `LOCAL` y ubicación física del producto: diseño en
-  `docs/planeacion/DISENO_LOCAL_Y_UBICACION_FISICA.md` (H-3, H-9).
-- Eliminación administrativa con reautenticación de Google (H-9).
-- Árbol sobre atributos de compatibilidad (H-2).
+- **Correo:** la cola `CORREO_SALIDA` existe, pero no hay proveedor
+  configurado (D-53).
+- **Eliminación excepcional con reautenticación de Google** (D-30, P-14): no
+  implementada.
+- **Panel de parámetros para el administrador** (P-60).
+- **Despliegue, pruebas con Postman y migración a PostgreSQL/Supabase:** fases
+  siguientes.
+- **`npm audit` del backend:** 6 avisos en dependencias. El más alto es
+  nodemailer, que solo afecta al correo, hoy apagado. Falta aplicar
+  `npm audit fix`, que requiere aprobación.
+- **Mejoras propuestas del KD-tree** (M1–M5 del análisis del Pilar A).
 
-## 9. Documentación de planeación
+## 9. Documentación
+
+**Vigente (para la sustentación):**
 
 | Documento | Contenido |
 |---|---|
-| `docs/planeacion/PLAN_CIERRE_LIS.md` | Backlog, bloqueos y estado por tarea |
-| `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` | Estado y evidencia por criterio (provisional) |
-| `docs/planeacion/REGISTRO_DECISIONES.md` | Decisiones técnicas provisionales y cómo revertirlas |
-| `docs/planeacion/ANALISIS_PILAR_A_KDTREE.md` | Benchmark y alternativas del árbol |
-| `docs/planeacion/DISENO_LOCAL_Y_UBICACION_FISICA.md` | Modelo propuesto para LOCAL y lote físico |
-| `docs/planeacion/INFORME_ETAPA_A_2026-11-20.md` | Línea base de la auditoría |
+| `README.md` | Puesta en marcha, demo, modelo, algoritmo, seguridad y API |
+| `docs/01_decisiones_y_pendientes.md` | Decisiones D-01 a D-67 y pendientes: la fuente de verdad del negocio |
+| `docs/planeacion/ANALISIS_PILAR_A_KDTREE.md` | El KD-tree: qué resuelve, verificación, benchmark del 2026-11-26, debilidades y mejoras |
+| `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` | Estado y evidencia por criterio R1 a R8 (provisional: no hay rúbrica oficial) |
+| `docs/00_directrices_profesor.md` | Directrices del profesor |
+| `docs/RESUMEN_PROYECTO_LIS.md` | Resumen ejecutivo del negocio |
+
+**Histórico (línea base del 2026-11-20; no describe el estado actual):**
+
+- `docs/planeacion/INFORME_ETAPA_A_2026-11-20.md`
+- `PLAN_CIERRE_LIS.md`
+- `REGISTRO_DECISIONES.md`
+- `DISENO_LOCAL_Y_UBICACION_FISICA.md`
+- `docs/DIAGNOSTICO_CRUD_BASE.md`
+- `docs/Anteproyecto_completo.md`: documento académico original, no se
+  modifica.
 
 ## 10. Pruebas
 
 ```bash
 cd backend
-npm test                                              # 89 pruebas unitarias, sin BD
-npx ts-node --transpile-only scripts/benchmark-kdtree.ts   # benchmark del KD-tree
+npm test        # 237 pruebas unitarias en 18 suites, datos ficticios, sin BD
+npx ts-node --transpile-only scripts/benchmark-kdtree.ts lis         # benchmark, datos tipo LIS
+npx ts-node --transpile-only scripts/benchmark-kdtree.ts selectivo   # benchmark, consultas selectivas
 ```
+
+| Suite | Qué cubre |
+|---|---|
+| `auth`, `jwt.guard`, `seguridad`, `seguridad-http` | Token de Google, dominio, bloqueo inmediato, RBAC, IDOR de fotos, cabeceras, límite de peticiones, nombres de archivo |
+| `flujo-integridad`, `saldo`, `cancelar-dto` | Catálogo anónimo, límite de 5, saldos, recepción incompleta, devolución, cancelación con causa |
+| `kdtree`, `prioridad` | Árbol frente a filtro lineal, compatibilidad 3D y 2D, fórmula de prioridad |
+| `calendario`, `pilares-b-c`, `tareas/*`, `local-notificaciones` | Días hábiles y festivos, plazos, esperas y prórrogas, tareas, Local, avisos, ranking y alertas |
+| `certificado`, `trazabilidad` | Certificado de estudio, línea de tiempo de una donación |
 
 ## 11. Pendiente de confirmar con el profesor
 

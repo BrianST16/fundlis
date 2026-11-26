@@ -1,5 +1,7 @@
 # Proyecto LIS — Resumen ejecutivo para el equipo
 
+> **Actualizado el 2026-11-26.** Las secciones 1 a 7 describen el negocio y siguen vigentes. Los puntos que aquí figuran como "pendientes" ya se decidieron: el resultado está en la **sección 10** y el detalle en `docs/01_decisiones_y_pendientes.md` (D-38 a D-67). La sección 8 describe el CRUD de partida y es **histórica**.
+
 **Nombre de trabajo:** Plataforma web de intermediación de donaciones y peticiones del Laboratorio Integrado de Sistemas (LIS), Universidad de Antioquia.
 
 ## 1. Propósito y problema
@@ -70,7 +72,7 @@ El emparejamiento es semiautomático y supervisado por el LIS:
 
 Las alertas se envían al buzón interno y al correo ante asignaciones, cambios de estado, cancelaciones y proximidad/vencimiento de plazos; se informa al auxiliar y al usuario involucrado. Se exige evidencia fotográfica de la recepción física y entrega final, almacenada de forma privada. El historial debe permitir reconstruir los intentos, movimientos y decisiones. Las eliminaciones administrativas son excepcionales: requieren justificación, reautenticación Google (nunca contraseña de Google) y registro de auditoría; se prefiere baja lógica/anonimización sin destruir la trazabilidad.
 
-## 8. Stack y estado del CRUD
+## 8. Stack y estado del CRUD (histórico, auditoría F0)
 
 **Directriz del profesor:** Angular, backend JavaScript y MySQL; arquitectura real de tres capas y tres componentes desplegables independientes.
 
@@ -89,3 +91,19 @@ Las alertas se envían al buzón interno y al correo ante asignaciones, cambios 
 7. Pruebas, auditoría, evidencias, despliegue y documentación para sustentar cada criterio.
 
 **Estado:** resumen basado en las directrices del profesor, aclaraciones del equipo y auditoría del CRUD. Los puntos pendientes no deben presentarse como decisiones aprobadas.
+
+## 10. Cómo quedó resuelto (2026-11-26)
+
+| Tema | Resultado | Decisión |
+|---|---|---|
+| Stack | Angular 20, NestJS 11 con TypeScript, TypeORM y SQL Server Express, en tres componentes separados. Falta la confirmación escrita del profesor. | D-31, D-32 |
+| Primer administrador | Sale de `ADMIN_EMAILS`. Rol SUPERUSUARIO, asignado solo por script, para gestionar a los administradores. | P-03, D-45 |
+| Límite de 5 | Cuentan las peticiones pendientes y aprobadas. Una asignada sigue contando hasta cerrarse (propuesta). | P-04 |
+| Emparejamiento | KD-tree adaptativo de **compatibilidad**: categoría por igualdad, estado de conservación y medida o talla. Después, prioridad P = 0,5·C + 0,3·S + 0,2·A con A = min(1, días/90). Local siempre al final. El auxiliar confirma. | D-38, D-41 |
+| LOCAL | Tabla `DESTINO_LOCAL` (nunca una petición ficticia) con lote físico separado del intento. Custodia temporal por el auxiliar. Que quede para el LIS lo propone el administrador y requiere el consentimiento del donador. | D-43, D-50 |
+| Plazos y aplazamientos | Donador: 10 días hábiles más una prórroga de 5. Estudiante: 3 más una extensión de 3. Las esperas de Local tienen fecha y tope. Lo vencido es una tarea `DEFINIR_ESTADO` que se decide donde está el objeto. | D-58 a D-62 |
+| Notificaciones | Bandeja interna persistente. El correo tiene cola, pero queda fuera del alcance por ahora. | D-42, D-53 |
+| Certificado de estudio | Opcional; lo valida el administrador; no afecta el puntaje. | D-46 |
+| Ranking | Separado de la prioridad: estudiantes en riesgo y donador recurrente. | D-40, D-49, D-55 |
+| Bloqueo de cuentas | Solo sin mediaciones en curso; cierra las publicaciones abiertas. | D-64 |
+| Pendiente | Eliminación excepcional con reautenticación de Google (D-30, P-14), correo, panel de parámetros (P-60), despliegue y pruebas con Postman. | — |
