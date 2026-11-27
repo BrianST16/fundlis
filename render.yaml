@@ -1,0 +1,66 @@
+# =====================================================================
+# Render Blueprint - API de LIS Dona (backend NestJS)          D-68
+# ---------------------------------------------------------------------
+# Render -> New -> Blueprint -> este repositorio. Crea el servicio web con
+# esta configuracion. Las variables con "sync: false" NO estan aqui: Render
+# las pide al crear el Blueprint (o se ponen en Environment). Nunca se
+# suben claves al repositorio.
+#
+# - Region "ohio": la misma zona de AWS (us-east-2) que el proyecto de
+#   Supabase, para que cada consulta a la BD tarde menos.
+# - La API usa SOLO el usuario de minimo privilegio lis_app. El usuario
+#   administrador de la BD (postgres) nunca va al servidor.
+# =====================================================================
+services:
+  - type: web
+    name: lis-dona-api
+    runtime: node
+    plan: free
+    region: ohio
+    rootDir: backend
+    # --include=dev: el build necesita el CLI de Nest (devDependency) aunque
+    # NODE_ENV sea production.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/salud
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      # Render pone un proxy delante: la IP real del cliente llega en
+      # X-Forwarded-For (limite de peticiones por IP, D-65).
+      - key: TRUST_PROXY
+        value: "1"
+      # --- Base de datos (Supabase, Session pooler) ---
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: postgres
+      - key: DB_SCHEMA
+        value: lis
+      - key: DB_USER
+        sync: false          # lis_app.<ref-del-proyecto>
+      - key: DB_PASSWORD
+        sync: false          # la misma clave que usaste con scripts/db/usuario-app.js
+      - key: DB_SSL_CA
+        value: /etc/secrets/supabase-ca.crt   # Secret File con el certificado del proyecto
+      # --- Google y sesion ---
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: DOMINIO_ESTUDIANTE
+        value: udea.edu.co
+      - key: JWT_SECRET
+        generateValue: true  # Render genera una clave aleatoria nueva (no es la de desarrollo)
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: ADMIN_EMAILS
+        sync: false
+      # URL publica del frontend en Vercel, sin "/" final.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MAX_BYTES_EVIDENCIA
+        value: "2097152"

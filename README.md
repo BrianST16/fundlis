@@ -147,7 +147,14 @@ Lista de verificación. Nada de esto está automatizado todavía.
 3. Los respaldos los hace Supabase. Antes de un cambio grande, se puede exportar
    con `pg_dump` usando la cadena del administrador.
 
-**Backend (NestJS)**
+**Backend (NestJS) en Render.** `render.yaml` (Blueprint) crea el servicio `lis-dona-api`:
+
+- región Ohio, la misma zona AWS que Supabase;
+- build `npm ci --include=dev && npm run build` y salud en `/api/salud`;
+- `JWT_SECRET` generado por Render.
+
+Las claves se cargan en el panel y el certificado va como *Secret File* `supabase-ca.crt`.
+
 1. Variables de entorno, **no** un `.env` subido al repositorio. Ver
    `backend/.env.example`. En producción:
    - `NODE_ENV=production` y un `JWT_SECRET` nuevo y largo;
@@ -164,7 +171,14 @@ Lista de verificación. Nada de esto está automatizado todavía.
    `NODE_ENV=production`) ya las pone el backend.
 4. Comprobar `GET https://TU-BACKEND/api/salud` → `"baseDatos":"conectada"`.
 
-**Frontend (Angular)**
+**Frontend (Angular) en Vercel.** `frontend/vercel.json` define:
+
+- el build y la carpeta `dist/lis-dona/browser`;
+- la reescritura de rutas a `index.html`;
+- las cabeceras de seguridad (CSP con la URL de la API, nosniff, anti-iframe y HSTS).
+
+En Vercel, el *Root Directory* es `frontend`.
+
 1. En `frontend/src/environments/environment.prod.ts`, poner `apiUrl` con la URL
    pública del backend terminada en `/api`. `googleClientId` debe ser el mismo
    del backend.
