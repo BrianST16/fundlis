@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { EntidadHistorial } from '../common/enums';
 
-@Entity('HISTORIAL_ESTADO')
+@Entity('historial_estado')
 export class HistorialEstado {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
@@ -21,9 +21,9 @@ export class HistorialEstado {
   @Column({ name: 'actor_id', type: 'int', nullable: true })
   actorId: number | null;
 
-  @Column({ name: 'motivo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo', type: 'varchar', length: 400, nullable: true })
   motivo: string | null;
 
-  @CreateDateColumn({ name: 'ocurrido_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'ocurrido_en', type: 'timestamptz' })
   ocurridoEn: Date;
 }

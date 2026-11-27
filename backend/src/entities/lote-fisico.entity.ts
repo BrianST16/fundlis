@@ -9,7 +9,7 @@ export type OrigenLote = 'RECEPCION_ASIGNACION' | 'RECEPCION_INCOMPLETA' | 'RECE
  * asignacion y del historial (directriz §4). Toda recepcion crea un lote.
  * Un lote EN_LIS sin intento vigente ni custodia LOCAL esta "sin destino".
  */
-@Entity('LOTE_FISICO')
+@Entity('lote_fisico')
 export class LoteFisico {
   @PrimaryGeneratedColumn()
   id: number;
@@ -37,12 +37,12 @@ export class LoteFisico {
   recepcionMovimientoId: number | null;
 
   /** Desde cuando el lote no tiene destino (inicio de la espera, P-08). */
-  @Column({ name: 'sin_destino_desde', type: 'datetime2', nullable: true })
+  @Column({ name: 'sin_destino_desde', type: 'timestamptz', nullable: true })
   sinDestinoDesde: Date | null;
 
-  @CreateDateColumn({ name: 'creado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
   creadoEn: Date;
 
-  @Column({ name: 'actualizado_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'actualizado_en', type: 'timestamptz', nullable: true })
   actualizadoEn: Date | null;
 }

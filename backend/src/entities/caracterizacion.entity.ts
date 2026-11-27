@@ -4,7 +4,7 @@ import { GrupoSisben } from './grupo-sisben.entity';
 import { RespuestaCaracterizacion } from './respuesta-caracterizacion.entity';
 import { Usuario } from './usuario.entity';
 
-@Entity('CARACTERIZACION')
+@Entity('caracterizacion')
 export class Caracterizacion {
   @PrimaryGeneratedColumn()
   id: number;
@@ -27,10 +27,10 @@ export class Caracterizacion {
   @Column({ name: 'puntaje_total', type: 'decimal', precision: 7, scale: 5, transformer: decimalTransformer })
   puntajeTotal: number;
 
-  @CreateDateColumn({ name: 'completada_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'completada_en', type: 'timestamptz' })
   completadaEn: Date;
 
-  @Column({ name: 'actualizada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'actualizada_en', type: 'timestamptz', nullable: true })
   actualizadaEn: Date | null;
 
   @OneToMany(() => RespuestaCaracterizacion, (r) => r.caracterizacion, { cascade: true })

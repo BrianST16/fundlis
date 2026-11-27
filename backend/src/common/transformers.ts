@@ -1,6 +1,6 @@
 import { ValueTransformer } from 'typeorm';
 
-/** El driver mssql puede devolver DECIMAL como string. */
+/** El driver pg devuelve NUMERIC como string (para no perder precision). */
 export const decimalTransformer: ValueTransformer = {
   to: (value: number | null) => value,
   from: (value: string | number | null) =>

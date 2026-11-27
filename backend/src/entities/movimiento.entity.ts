@@ -6,7 +6,7 @@ import { Usuario } from './usuario.entity';
 
 /** Libro de movimientos fisicos. Inmutable: una correccion se registra
  *  como un movimiento nuevo, nunca editando el anterior. */
-@Entity('MOVIMIENTO')
+@Entity('movimiento')
 export class Movimiento {
   @PrimaryGeneratedColumn()
   id: number;
@@ -34,7 +34,7 @@ export class Movimiento {
   cantidad: number;
 
   /** Nombre de quien entrega o recibe fisicamente. Obligatorio. */
-  @Column({ name: 'nombre_contraparte', type: 'nvarchar', length: 200 })
+  @Column({ name: 'nombre_contraparte', type: 'varchar', length: 200 })
   nombreContraparte: string;
 
   @Column({ name: 'evidencia_id', type: 'int' })
@@ -44,7 +44,7 @@ export class Movimiento {
   @JoinColumn({ name: 'evidencia_id' })
   evidencia: Evidencia;
 
-  @Column({ name: 'observaciones', type: 'nvarchar', length: 600, nullable: true })
+  @Column({ name: 'observaciones', type: 'varchar', length: 600, nullable: true })
   observaciones: string | null;
 
   @Column({ name: 'registrado_por', type: 'int' })
@@ -54,6 +54,6 @@ export class Movimiento {
   @JoinColumn({ name: 'registrado_por' })
   responsable: Usuario;
 
-  @CreateDateColumn({ name: 'registrado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'registrado_en', type: 'timestamptz' })
   registradoEn: Date;
 }

@@ -210,7 +210,7 @@ export class AsignacionesService {
     const suspendida = await this.calendario.recepcionSuspendida();
     if (suspendida) {
       throw new BadRequestException(
-        `La recepción de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`,
+        `La recepción de donaciones está suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`,
       );
     }
     // Componentes de prioridad (informativos, D-38): fuera de la transaccion.

@@ -1,5 +1,7 @@
 # Plan de cierre — LIS Dona
 
+> **HISTÓRICO (línea base del 2026-11-20).** Este documento ya no describe el estado actual. El estado vigente está en `README.md`, `docs/01_decisiones_y_pendientes.md` (D-01 a D-67) y `docs/planeacion/MATRIZ_CUMPLIMIENTO_RUBRICA.md` (2026-11-26). Las tareas bloqueadas por H-2, H-3 y H-9 se resolvieron con D-41, D-43 y D-37.
+
 | Campo | Valor |
 |---|---|
 | Versión | 1.0 |

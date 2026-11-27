@@ -278,7 +278,7 @@ describe('Notificaciones: bandeja + correo (D-42)', () => {
 
   it('una violacion de unicidad concurrente se trata como ya notificado', async () => {
     const { s, notificaciones } = servicio();
-    notificaciones.save.mockRejectedValueOnce(Object.assign(new Error('dup'), { number: 2627 }));
+    notificaciones.save.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
     await expect(s.aUsuarios([5], aviso)).resolves.toBe(0);
   });
 });

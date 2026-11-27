@@ -184,7 +184,7 @@ export class OfertasService {
     const suspendida = await this.calendario.recepcionSuspendida();
     if (suspendida) {
       throw new BadRequestException(
-        `La recepción de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}). Intenta después del cierre.`,
+        `La recepción de donaciones está suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}). Intenta después del cierre.`,
       );
     }
     const categoria = await this.categorias.obtenerActiva(datos.categoriaId);

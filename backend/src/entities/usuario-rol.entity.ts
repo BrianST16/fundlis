@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGenerat
 import { Rol } from '../common/enums';
 import { Usuario } from './usuario.entity';
 
-@Entity('USUARIO_ROL')
+@Entity('usuario_rol')
 @Unique(['usuarioId', 'rol'])
 export class UsuarioRol {
   @PrimaryGeneratedColumn()
@@ -21,6 +21,6 @@ export class UsuarioRol {
   @Column({ name: 'asignado_por', type: 'int', nullable: true })
   asignadoPor: number | null;
 
-  @CreateDateColumn({ name: 'asignado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'asignado_en', type: 'timestamptz' })
   asignadoEn: Date;
 }

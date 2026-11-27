@@ -2,7 +2,7 @@ import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 't
 import { decimalTransformer } from '../common/transformers';
 import { PreguntaCaracterizacion } from './pregunta-caracterizacion.entity';
 
-@Entity('OPCION_CARACTERIZACION')
+@Entity('opcion_caracterizacion')
 export class OpcionCaracterizacion {
   @PrimaryGeneratedColumn()
   id: number;
@@ -14,7 +14,7 @@ export class OpcionCaracterizacion {
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: PreguntaCaracterizacion;
 
-  @Column({ name: 'texto', type: 'nvarchar', length: 300 })
+  @Column({ name: 'texto', type: 'varchar', length: 300 })
   texto: string;
 
   @Column({ name: 'puntaje', type: 'decimal', precision: 6, scale: 5, transformer: decimalTransformer })

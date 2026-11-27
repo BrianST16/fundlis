@@ -123,7 +123,7 @@ El motor semiautomático es un pilar central:
 
 - Frontend: Angular.
 - Backend: JavaScript.
-- Base de datos: MySQL.
+- Base de datos: libre. Lo obligatorio es la arquitectura en capas (aclaración del equipo, 2026-11-27; ver D-68).
 - Arquitectura: tres capas (presentación, negocio, datos) con validación de seguridad en backend.
 - Componentes desplegables: frontend, backend/API y BD independientes e identificables.
 

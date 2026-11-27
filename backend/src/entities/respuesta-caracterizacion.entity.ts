@@ -1,7 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Caracterizacion } from './caracterizacion.entity';
 
-@Entity('RESPUESTA_CARACTERIZACION')
+@Entity('respuesta_caracterizacion')
 export class RespuestaCaracterizacion {
   @PrimaryColumn({ name: 'caracterizacion_id', type: 'int' })
   caracterizacionId: number;

@@ -54,7 +54,7 @@ La auditoría F0 anterior observó Angular 22.1.7, NestJS 12.0.3 con TypeScript,
 
 El usuario indica que el proyecto ha avanzado desde esa auditoría. Por tanto, vuelve a inspeccionar todo el repositorio. No repitas los hallazgos antiguos como hechos actuales sin verificarlos. Conserva la auditoría como comparativo histórico.
 
-Existe un conflicto por resolver entre el stack indicado por el profesor (MySQL y backend JavaScript) y la línea base observada (SQL Server y NestJS/TypeScript). No migres de motor ni reescribas TypeScript a JavaScript sin una decisión expresa del equipo/profesor. Presenta alternativas, impacto y pregunta necesaria.
+Motor de BD: libre; lo obligatorio es la arquitectura en capas (aclaración del equipo, 2026-11-27, D-68). La BD se migra de SQL Server a PostgreSQL en Supabase en la rama `migracion-postgres`, manteniendo los estándares de seguridad. No reescribas TypeScript a JavaScript sin una decisión expresa del equipo/profesor. Presenta alternativas, impacto y pregunta necesaria.
 
 ## 5. Flujo de trabajo actual: dos etapas principales
 
@@ -87,7 +87,7 @@ Solo después de que el usuario revise y apruebe la auditoría y el plan de cier
 
 Usa este orden base, ajustándolo solo con justificación de dependencias:
 
-1. **Fundación y seguridad del entorno:** raíz correcta, secretos fuera del repositorio, configuración por entorno, Git y respaldo; resolver stack MySQL/SQL Server y JavaScript/TypeScript antes de migraciones.
+1. **Fundación y seguridad del entorno:** raíz correcta, secretos fuera del repositorio, configuración por entorno, Git y respaldo; motor de BD resuelto por D-68 (PostgreSQL en Supabase).
 2. **Arquitectura y tres componentes:** frontend Angular, backend/API y BD independientes, contratos, conexión y despliegue identificable.
 3. **Identidad, autenticación y privacidad:** Google OIDC, dominio por perfil, perfiles excluyentes, RBAC backend, anonimización del catálogo, protección de caracterización.
 4. **Flujo central LIS:** ofertas y peticiones, aprobaciones, límite de cinco, catálogo, tabla `OFERTA_X_PETICION`, cantidades, LOCAL, estados, recepción, custodia, entrega y devolución.

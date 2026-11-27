@@ -7,7 +7,7 @@ import { Usuario } from './usuario.entity';
 
 /** La peticion NO lleva cantidad solicitada: la cantidad vive en la
  *  asignacion (OFERTA_X_PETICION). */
-@Entity('PETICION')
+@Entity('peticion')
 export class Peticion {
   @PrimaryGeneratedColumn()
   id: number;
@@ -26,35 +26,35 @@ export class Peticion {
   @JoinColumn({ name: 'categoria_id' })
   categoria: Categoria;
 
-  @Column({ name: 'descripcion', type: 'nvarchar', length: 1000 })
+  @Column({ name: 'descripcion', type: 'varchar', length: 1000 })
   descripcion: string;
 
   @Column({ name: 'estado', type: 'varchar', length: 25 })
   estado: EstadoPeticion;
 
-  @CreateDateColumn({ name: 'creada_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creada_en', type: 'timestamptz' })
   creadaEn: Date;
 
-  @Column({ name: 'actualizada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'actualizada_en', type: 'timestamptz', nullable: true })
   actualizadaEn: Date | null;
 
   @Column({ name: 'revisada_por', type: 'int', nullable: true })
   revisadaPor: number | null;
 
-  @Column({ name: 'revisada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'revisada_en', type: 'timestamptz', nullable: true })
   revisadaEn: Date | null;
 
-  @Column({ name: 'motivo_rechazo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo_rechazo', type: 'varchar', length: 400, nullable: true })
   motivoRechazo: string | null;
 
-  @Column({ name: 'cerrada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'cerrada_en', type: 'timestamptz', nullable: true })
   cerradaEn: Date | null;
 
-  @Column({ name: 'motivo_cierre', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo_cierre', type: 'varchar', length: 400, nullable: true })
   motivoCierre: string | null;
 
   /** Compatibilidad (D-41): estado de conservacion minimo aceptable (1-5). */
-  @Column({ name: 'estado_minimo', type: 'tinyint', default: 1 })
+  @Column({ name: 'estado_minimo', type: 'smallint', default: 1 })
   estadoMinimo: number;
 
   /** Rango aceptable de la medida de la categoria. NULL = sin limite. */

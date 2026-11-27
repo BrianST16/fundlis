@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedCol
 import { Perfil } from '../common/enums';
 import { UsuarioRol } from './usuario-rol.entity';
 
-@Entity('USUARIO')
+@Entity('usuario')
 export class Usuario {
   @PrimaryGeneratedColumn({ name: 'id' })
   id: number;
@@ -15,22 +15,22 @@ export class Usuario {
   @Column({ name: 'email', type: 'varchar', length: 320 })
   email: string;
 
-  @Column({ name: 'nombre', type: 'nvarchar', length: 200 })
+  @Column({ name: 'nombre', type: 'varchar', length: 200 })
   nombre: string;
 
   @Column({ name: 'perfil', type: 'varchar', length: 20 })
   perfil: Perfil;
 
-  @Column({ name: 'activo', type: 'bit', default: true })
+  @Column({ name: 'activo', type: 'boolean', default: true })
   activo: boolean;
 
-  @Column({ name: 'motivo_bloqueo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo_bloqueo', type: 'varchar', length: 400, nullable: true })
   motivoBloqueo: string | null;
 
-  @CreateDateColumn({ name: 'creado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
   creadoEn: Date;
 
-  @Column({ name: 'ultimo_ingreso_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'ultimo_ingreso_en', type: 'timestamptz', nullable: true })
   ultimoIngresoEn: Date | null;
 
   @OneToMany(() => UsuarioRol, (ur) => ur.usuario)

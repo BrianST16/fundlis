@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Like, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, ILike, Repository } from 'typeorm';
 import { ASIGNACION_VIGENTE, EntidadHistorial, EstadoAsignacion, EstadoOferta, EstadoPeticion, Perfil, Rol } from '../common/enums';
 import { HistorialService } from '../common/historial.service';
 import { DestinoLocal, LoteFisico, Oferta, OfertaXPeticion, Peticion, Usuario, UsuarioRol } from '../entities';
@@ -99,9 +99,10 @@ export class UsuariosService {
   }
 
   async listar(filtro?: string) {
-    const where = filtro
-      ? [{ email: Like(`%${filtro}%`) }, { nombre: Like(`%${filtro}%`) }]
-      : {};
+    // ILIKE: sin distinguir mayusculas. Los comodines que escriba el usuario
+    // (% _ \) se escapan para que busque el texto tal cual.
+    const patron = filtro ? `%${filtro.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : '';
+    const where = filtro ? [{ email: ILike(patron) }, { nombre: ILike(patron) }] : {};
     const lista = await this.usuarios.find({
       where: where as any,
       relations: { roles: true },

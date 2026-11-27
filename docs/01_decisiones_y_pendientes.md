@@ -73,6 +73,7 @@
 | D-65 | **Endurecimiento de seguridad (S1 a S6, S8).** S1: cabeceras de seguridad en la API sin dependencias nuevas (nosniff, anti-iframe, CSP cerrada, sin referrer, HSTS en producción; sin `X-Powered-By`). S2: límite de peticiones por IP en memoria (login 10/min, fotos 30/min, certificado 10/min, general 300/min configurable), `TRUST_PROXY` para leer la IP real. S3: `HISTORIAL_ESTADO` inmutable en la BD (trigger, migración 014; solo el script demo borra sus filas marcando la sesión). S4: script `db/scripts/crear_usuario_app.sql` (usuario `lis_app` sin DDL ni UPDATE/DELETE del historial). S5: riesgo aceptado con mitigaciones (Angular escapa, sin HTML insertado, token de 8 h revalidado en cada petición) más la CSP del frontend en la lista de despliegue. S6: nombre de archivo saneado en `Content-Disposition`. S8: auditoría de dependencias hecha; actualizaciones pendientes de aprobación. S7 (eliminaciones excepcionales) sigue fuera del alcance. | Aclaración del equipo (2026-11-26) |
 | D-66 | **Limpieza y textos de versión final.** Código sin uso eliminado: 6 métodos de API y 2 modelos del frontend, una clase CSS, 4 repositorios inyectados sin uso en el backend y la ruta duplicada `POST /local/:id/reasignar` (la reasignación de un lote Local se hace desde Emparejamiento). Textos de la interfaz reescritos: breves, sin explicaciones técnicas, con tildes. Ningún código interno se muestra: `DEFINIR_ESTADO` → *decisión pendiente*, estados, roles y perfiles en palabras (`textoLegible`/`estadoLegible`, también en los mensajes del servidor y la bandeja). El detalle del KD-tree queda plegado en *Detalle del algoritmo*. Se conservaron guardas, validaciones, bloqueos, índices, trigger y middleware de seguridad. | Aclaración del equipo (2026-11-26) |
 | D-67 | **Paleta de cuatro colores.** Verde como color principal (botones, menú, estados normales) con sus tonos; neutros con leve tinte verde; **amarillo** para información y lo que espera una acción normal (por recibir, en devolución, por devolver, sin destino, propuestas); **rojo** solo para advertencias (vencido, decisión pendiente, errores, acciones destructivas). Se retira el azul de los avisos informativos. Mismas familias en modo oscuro. Detalles: sombra suave en tarjetas, estados *hover* y foco visibles, avisos con borde lateral, encabezados de tabla en verde suave y formularios internos en panel verde claro. | Aclaración del equipo (2026-11-26) |
+| D-68 | **Migración de la BD de SQL Server a PostgreSQL en Supabase** (para el despliegue). La lógica de negocio no cambia: se traducen el esquema (vistas indexadas → índices únicos parciales, trigger del historial en plpgsql, tipos de columna), la configuración de TypeORM, la detección de filas duplicadas (código 23505) y los scripts de BD. Se trabaja en la rama `migracion-postgres`; SQL Server queda como respaldo (`LisDona_20261126222432_antes-postgres.bak`, COPY_ONLY). Seguridad propia de Supabase: tablas en un esquema `lis` no expuesto por su API, sin acceso para `anon`/`authenticated`, RLS activo y usuario `lis_app` de mínimo privilegio. **La presentación usa el mismo proyecto de Supabase ya verificado** (aclaración del equipo, 2026-11-27); un proyecto de producción aparte es opcional. Como las pruebas de humo escriben sobre datos demo en esa misma BD, después de probar se recarga la demo (`node scripts/db/demo.js`). El motor de BD es **libre**: MySQL era la idea inicial, no una obligación. Lo obligatorio es la **arquitectura en capas**, con los mismos estándares de seguridad. Se empieza con la BD limpia y se cargan los datos de ejemplo **con imágenes** para verificar el funcionamiento (P-61). | Aclaración del equipo (2026-11-27) — CONFIRMADA |
 | P-60 | **Panel de configuración del administrador** para editar los parámetros (plazos, esperas, prórrogas, pesos, umbrales). Hoy se cambian en la tabla `PARAMETRO` (migraciones). | Aclaración del equipo (2026-11-26) — FUERA DEL ALCANCE por ahora |
 
 ## 2. Pendientes que deben resolverse por fase
@@ -104,22 +105,40 @@
 | P-23 | Al reasignar un producto que ya está EN_CUSTODIA, ¿cómo nace el nuevo intento y qué plazo corre? Requiere separar ubicación física del intento. | F2/F4 |
 | P-24 | Fotos en BD: tamaño máximo, formatos, compresión y retención; ¿la devolución exige foto? (enlaza P-17) | F4/F6 |
 | P-25 | Punto exacto de inicio del plazo del donador: "notificación de asignación". Mientras no exista registro de notificación se usa la fecha de asignación (la notificación es inmediata). | F2/F6 |
+| P-61 | Migración a PostgreSQL (D-68). **Cerrado** (2026-11-27): (a) BD limpia (esquema + seed) más los datos de ejemplo con imágenes; no se copian los datos de prueba de `LisDona`; (b) nombres de tabla en minúsculas (al equipo le es indiferente); (c) propuesta vigente: fotos y certificados en la BD (`bytea`), Supabase Storage más adelante. | Aclaración del equipo |
 
 ### 2.1 Estado actualizado de pendientes (2026-11-20)
 
 | ID | Estado |
 |---|---|
-| P-01 | **Cerrado provisionalmente** por D-31/D-33. Falta la confirmación escrita del profesor (evidencia de rúbrica). |
+| P-01 | **Cerrado** (2026-11-27): el motor de BD es libre; lo obligatorio es la arquitectura en capas (D-68). |
 | P-02 | **Cerrado provisionalmente** por D-32. Falta la confirmación escrita del profesor. |
 | P-03 | Implementado como PROPUESTA: primer administrador por `ADMIN_EMAILS` (README §7.8). Pendiente de aprobación. |
 | P-04 | Implementado como PROPUESTA (H-7a): cuentan `PENDIENTE_APROBACION` y `APROBADA`; una petición con asignación vigente sigue consumiendo cupo hasta su estado terminal. |
-| P-09 | **Bloqueante académico (H-2).** El código actual construye el KD-tree sobre dimensiones de prioridad. La hipótesis de diseño es separar compatibilidad (árbol) de prioridad (orden). Ver `planeacion/ANALISIS_PILAR_A_KDTREE.md`. |
+| P-09 | **Cerrado** por D-41 (2026-11-26): el KD-tree indexa compatibilidad (estado mínimo y rango de medida); la prioridad ordena después. Ver `planeacion/ANALISIS_PILAR_A_KDTREE.md`. |
 | P-13 | Enfoque decidido (D-36); detalle en P-24. Implementado: JPEG/PNG/WebP, máximo 2 MB, verificación de firma binaria. |
 | P-15 | **Cerrado** por D-34. |
 | P-16 | **Cerrado** por D-33. |
 | P-19 | Implementado como PROPUESTA (H-7b): la oferta se aprueba o rechaza completa. |
 | P-20 | Implementado como PROPUESTA (H-7d): las fotos de movimientos físicos solo las ve el personal del LIS. |
 | P-22 | Implementado como PROPUESTA (H-7c): el donador no cancela una oferta con cualquier intento de asignación; el remanente no se cancela automáticamente. |
+
+### 2.2 Estado de pendientes al 2026-11-26
+
+| ID | Estado |
+|---|---|
+| P-05 | **Cerrado** por D-43 y D-50: `DESTINO_LOCAL` con lote físico, sin petición ficticia. |
+| P-06 | **Cerrado** por D-18: se cancela el intento y se crea una oferta nueva por lo recibido. |
+| P-07 | **Cerrado** por D-58 y D-61: una prórroga de 5 días hábiles para el donador (`MAX_APLAZAMIENTOS_DONADOR`, `PLAZO_APLAZAMIENTO_DONADOR_DIAS_HABILES`). |
+| P-08 | **Cerrado** por D-60 a D-62: plazos y esperas de Local con fecha y tope. |
+| P-10 | **Cerrado** en fórmula por D-38. Los pesos 0,5 / 0,3 / 0,2 y la escala Sisbén siguen como propuesta. |
+| P-11 | Fórmulas implementadas (D-40). Los pesos siguen como propuesta. |
+| P-12 | **Cerrado**: festivos calculados (Ley 51 de 1983 y Pascua); cierres en `CIERRE_LIS`, con suspensión anticipada `DIAS_ANTICIPACION_CIERRE`. |
+| P-14 | **Abierto.** Eliminación excepcional con reautenticación de Google: no implementada. |
+| P-17, P-24 | La devolución registra un movimiento con foto; fotos JPEG, PNG o WebP de hasta 2 MB. |
+| P-18 | **Cerrado** por D-50: la aceptación para el LIS deja el lote como patrimonio (`PATRIMONIO_LIS`). |
+| P-23 | **Cerrado** por D-48: se reasigna desde custodia sin repetir la recepción. |
+| P-60 | Fuera del alcance por ahora. |
 
 Las decisiones técnicas provisionales tomadas durante la implementación se registran en `docs/planeacion/REGISTRO_DECISIONES.md`.
 

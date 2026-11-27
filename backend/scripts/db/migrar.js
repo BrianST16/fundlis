@@ -1,99 +1,70 @@
 /**
- * Ejecutor de migraciones versionadas (INDICACIONES §2, paso 4).
+ * Ejecutor de migraciones versionadas para PostgreSQL / Supabase (D-68).
  *   node scripts/db/migrar.js            aplica las pendientes
- *   node scripts/db/migrar.js --estado   solo lista aplicadas/pendientes
+ *   node scripts/db/migrar.js --estado   solo lista aplicadas y pendientes
  *
- * - Lee db/migraciones/NNN_descripcion.sql en orden.
- * - Registra cada una en ESQUEMA_VERSION (version, nombre, sha256, fecha).
- * - Cada migracion corre en UNA transaccion: si un lote falla, se revierte
- *   completa y no se registra.
- * - Separa lotes por lineas "GO" (como sqlcmd).
+ * - Lee db/postgres/migraciones/NNN_descripcion.sql en orden.
+ * - Registra cada una en lis.esquema_version (version, nombre, sha256, fecha).
+ * - Cada migracion corre en UNA transaccion: si falla, se revierte completa
+ *   y no se registra (Postgres admite DDL transaccional).
  * - Si el contenido de una migracion ya aplicada cambio, se detiene.
+ * - Se ejecuta con el usuario ADMINISTRADOR (DB_ADMIN_USER), nunca con lis_app.
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { conectar, destinoLegible, sql } = require('./conexion');
+const { conectar, destinoLegible } = require('./conexion');
 
-const DIR = path.join(__dirname, '..', '..', '..', 'db', 'migraciones');
-
-function lotes(texto) {
-  return texto
-    .split(/^\s*GO\s*;?\s*$/gim)
-    .map((l) => l.trim())
-    .filter((l) => l && !/^(--[^\n]*\n?|\s)*$/.test(l));
-}
+const DIR = path.join(__dirname, '..', '..', '..', 'db', 'postgres', 'migraciones');
+const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 (async () => {
   const soloEstado = process.argv.includes('--estado');
   console.log(`Destino: ${destinoLegible()}`);
-  const pool = await conectar();
+  const db = await conectar();
+  try {
+    await db.query(`
+      CREATE SCHEMA IF NOT EXISTS lis;
+      CREATE TABLE IF NOT EXISTS lis.esquema_version (
+        version     integer        NOT NULL PRIMARY KEY,
+        nombre      varchar(200)   NOT NULL,
+        sha256      char(64)       NOT NULL,
+        aplicada_en timestamptz(0) NOT NULL DEFAULT now()
+      );`);
+    const aplicadas = new Map(
+      (await db.query('SELECT version, nombre, sha256 FROM lis.esquema_version')).rows.map((r) => [r.version, r]),
+    );
 
-  await pool.request().batch(`
-    IF OBJECT_ID('ESQUEMA_VERSION') IS NULL
-    CREATE TABLE ESQUEMA_VERSION (
-      version     INT           NOT NULL PRIMARY KEY,
-      nombre      NVARCHAR(200) NOT NULL,
-      sha256      CHAR(64)      NOT NULL,
-      aplicada_en DATETIME2(0)  NOT NULL DEFAULT SYSUTCDATETIME()
-    );`);
-
-  const aplicadas = new Map(
-    (await pool.request().query('SELECT version, nombre, sha256 FROM ESQUEMA_VERSION')).recordset.map((r) => [
-      r.version,
-      r,
-    ]),
-  );
-
-  const archivos = fs
-    .readdirSync(DIR)
-    .filter((f) => /^\d{3}_.+\.sql$/.test(f))
-    .sort();
-
-  for (const f of archivos) {
-    const version = Number(f.slice(0, 3));
-    const texto = fs.readFileSync(path.join(DIR, f), 'utf8');
-    // El hash no depende del fin de linea: Git puede entregar el mismo archivo
-    // con CRLF (Windows) o LF (Linux/Mac, p. ej. el servidor de despliegue).
-    // Se guarda el hash normalizado a LF y se aceptan tambien los hashes que
-    // se guardaron antes con el contenido en CRLF.
-    const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
-    const lf = texto.replace(/\r\n/g, '\n');
-    const hash = sha(lf);
-    const equivalentes = new Set([hash, sha(lf.replace(/\n/g, '\r\n'))]);
-    const previa = aplicadas.get(version);
-
-    if (previa) {
-      if (!equivalentes.has(previa.sha256)) {
-        throw new Error(`La migracion ${f} cambio despues de aplicarse. Crea una migracion nueva.`);
+    const archivos = fs.readdirSync(DIR).filter((f) => /^\d{3}_.+\.sql$/.test(f)).sort();
+    for (const f of archivos) {
+      const version = Number(f.slice(0, 3));
+      // El hash no depende del fin de linea (CRLF en Windows, LF en el servidor).
+      const texto = fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\r\n/g, '\n');
+      const hash = sha(texto);
+      const previa = aplicadas.get(version);
+      if (previa) {
+        if (previa.sha256 !== hash) throw new Error(`La migracion ${f} cambio despues de aplicarse. Crea una migracion nueva.`);
+        console.log(`  [aplicada]  ${f}`);
+        continue;
       }
-      console.log(`  [aplicada]  ${f}`);
-      continue;
-    }
-    if (soloEstado) {
-      console.log(`  [pendiente] ${f}`);
-      continue;
-    }
-
-    const tx = new sql.Transaction(pool);
-    await tx.begin();
-    try {
-      for (const lote of lotes(texto)) {
-        await new sql.Request(tx).batch(lote);
+      if (soloEstado) {
+        console.log(`  [pendiente] ${f}`);
+        continue;
       }
-      await new sql.Request(tx)
-        .input('v', version)
-        .input('n', f)
-        .input('h', hash)
-        .query('INSERT INTO ESQUEMA_VERSION (version, nombre, sha256) VALUES (@v, @n, @h)');
-      await tx.commit();
-      console.log(`  [aplicada ahora] ${f}`);
-    } catch (e) {
-      await tx.rollback();
-      throw new Error(`Fallo ${f}: ${e.message}. La migracion se revirtio completa.`);
+      await db.query('BEGIN');
+      try {
+        await db.query(texto);
+        await db.query('INSERT INTO lis.esquema_version (version, nombre, sha256) VALUES ($1, $2, $3)', [version, f, hash]);
+        await db.query('COMMIT');
+        console.log(`  [aplicada ahora] ${f}`);
+      } catch (e) {
+        await db.query('ROLLBACK');
+        throw new Error(`Fallo ${f}: ${e.message}. La migracion se revirtio completa.`);
+      }
     }
+  } finally {
+    await db.end();
   }
-  await pool.close();
 })().catch((e) => {
   console.error('ERROR:', e.message);
   process.exit(1);

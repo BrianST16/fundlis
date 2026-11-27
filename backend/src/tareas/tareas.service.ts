@@ -7,6 +7,7 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
+import { esViolacionUnica } from '../common/errores-bd';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
@@ -374,8 +375,7 @@ export class TareasService implements OnModuleInit, OnModuleDestroy {
       await this.tareas.save(this.tareas.create({ tipo: 'DEFINIR_ESTADO', estado: 'ABIERTA', ...t }));
       return true;
     } catch (e: any) {
-      const n = e?.number ?? e?.originalError?.info?.number;
-      if (n === 2601 || n === 2627) return false; // otra revision ya la creo
+      if (esViolacionUnica(e)) return false; // otra revision ya la creo
       throw e;
     }
   }

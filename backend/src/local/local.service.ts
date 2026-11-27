@@ -149,7 +149,7 @@ export class LocalService {
   async seleccionarDesdeOferta(ofertaId: number, cantidad: number, motivo: string, auxiliarId: number) {
     const suspendida = await this.calendario.recepcionSuspendida();
     if (suspendida) {
-      throw new BadRequestException(`La recepción de donaciones esta suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`);
+      throw new BadRequestException(`La recepción de donaciones está suspendida por cierre del LIS (${suspendida.desde} a ${suspendida.hasta}).`);
     }
     const posteriores: Posterior[] = [];
     const id = await this.dataSource.transaction(async (mgr) => {
