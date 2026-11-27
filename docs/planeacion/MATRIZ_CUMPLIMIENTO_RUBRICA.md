@@ -3,20 +3,23 @@
 | Campo | Valor |
 |---|---|
 | Carácter | **PROVISIONAL**: no se encontró la rúbrica oficial. Los criterios R1–R8 se tomaron de `docs/00_directrices_profesor.md` §10 y `docs/CRITERIOS_RUBRICA_BASE_PROVISIONAL.md`. No tienen pesos ni puntajes. |
-| Última actualización | 2026-11-26, después de las decisiones D-54 a D-67. Sustituye la versión del 2026-11-20. |
+| Última actualización | 2026-11-27, tras la migración a PostgreSQL en Supabase (D-68). Sustituye la versión del 2026-11-20. |
 | Estados | IMPLEMENTADO Y VERIFICADO · IMPLEMENTADO SIN PRUEBA · PARCIAL · AUSENTE · FUERA DEL ALCANCE |
 
-> **Regla.** "Verificado" exige una prueba **ejecutada** que pasó, o una prueba manual registrada contra la BD de desarrollo `LisDona`. Que el código compile no basta.
+> **Regla.** "Verificado" exige una prueba **ejecutada** que pasó, o una prueba manual registrada contra la BD de desarrollo: `LisDona` en SQL Server hasta el 2026-11-26 y Supabase desde D-68. Que el código compile no basta.
 
-## Evidencia de ejecución global (2026-11-26)
+## Evidencia de ejecución global (2026-11-26 y 2026-11-27)
 
 | Comando o prueba | Resultado |
 |---|---|
-| `npm test` (backend) | **18 suites, 237/237 pruebas**, datos ficticios, sin BD |
+| `npm test` (backend) | **19 suites, 242/242 pruebas**, datos ficticios, sin BD (2026-11-27) |
 | `npm run build` (backend) | Compila |
 | `ng build` (frontend, producción) | Compila. Bundle inicial de 327,2 kB (93,3 kB transferidos). La página más pesada es *custodia*, con 20,1 kB. |
-| Arranque del contexto Nest contra `LisDona` | Correcto |
-| Migración 014, ensayo con *rollback* | El trigger rechaza `UPDATE` y `DELETE` del historial; el borrado del script de demostración funciona; cerraría 3 ofertas agotadas |
+| Migraciones de Postgres en Supabase dev (001 esquema, 002 datos base, 003 seguridad) | Aplicadas sin errores; 22 tablas; datos base completos |
+| `node scripts/db/verificar-bd.js` | **12/12 controles**: RLS en todas las tablas; sin permisos para `anon` ni `authenticated`; `lis_app` sin privilegios especiales y solo INSERT en el historial; triggers del historial; índices únicos de las invariantes |
+| Permisos de `lis_app` probados en la BD (transacción revertida) | UPDATE y DELETE del historial, DDL y lectura de `esquema_version` → *permission denied* (42501) |
+| `node scripts/e2e/humo-postgres.js` (API contra Supabase dev) | **34/34**: catálogo anónimo, fotos desde la BD, KD-tree verificado, tareas sin duplicar, recepción y entrega con foto, permisos por rol, cuenta bloqueada |
+| `node scripts/db/demo.js` (cuatro veces) | Repetible: 15 usuarios, 25 ofertas con foto, 24 peticiones, 40 fotos |
 | `benchmark-kdtree.ts lis` y `selectivo` | `coinciden = true` en las 8 configuraciones (ver `ANALISIS_PILAR_A_KDTREE.md`) |
 | Pruebas manuales en el navegador | Flujo completo por rol, Local, plazos, cancelación con causa, bloqueo, modo oscuro |
 
@@ -25,12 +28,13 @@
 ### R1 — Tres componentes independientes · **IMPLEMENTADO; falta el despliegue público**
 
 - **Evidencia:**
-  - `frontend/` (Angular 20), `backend/` (NestJS 11) y `db/` (SQL Server) se compilan y ejecutan por separado;
+  - `frontend/` (Angular 20), `backend/` (NestJS 11) y la BD (PostgreSQL 17 en Supabase, esquema `lis`) son independientes;
+  - la conexión a la BD exige TLS verificado con el certificado del proyecto;
   - `GET /api/salud` no expone detalles del motor;
   - la conexión se configura por entorno (`.env.example`) con un usuario de mínimo privilegio, `lis_app`;
   - las migraciones se aplican con `backend/scripts/db/migrar.js`;
   - las instrucciones de despliegue están en el README §1.5.
-- **Brecha:** no hay URLs públicas. La migración a PostgreSQL/Supabase y el despliegue están planeados para la fase siguiente.
+- **Brecha:** la BD ya está desplegada en Supabase; faltan las URLs públicas del backend y del frontend.
 
 ### R2 — Google Auth y dominio institucional · **IMPLEMENTADO Y VERIFICADO**
 
@@ -49,11 +53,12 @@
 ### R3 — Arquitectura en capas, RBAC y privacidad · **IMPLEMENTADO Y VERIFICADO**
 
 - **Evidencia:**
-  - **Capas:** controlador (DTO y guards) → servicio (reglas y transacciones) → repositorios TypeORM → SQL Server (restricciones, vistas indexadas, trigger).
+  - **Capas:** controlador (DTO y guards) → servicio (reglas y transacciones) → repositorios TypeORM → PostgreSQL (restricciones, índices únicos parciales, triggers, RLS).
   - **RBAC** con `JwtGuard` y `RolesGuard` globales y el decorador `@Publico`. Roles y estado se releen de la BD en cada petición: `jwt.guard.spec.ts` (9).
   - **Superusuario** solo por script (D-45). El auxiliar no aprueba sus propias ofertas (D-47).
   - **Privacidad:** catálogo anónimo; caracterización y certificado solo para el administrador y el dueño; fotos de movimientos solo para el LIS, salvo la foto de la entrega al donador (D-51). Lo cubre `seguridad.spec.ts` (29).
   - **Endurecimiento** (D-65): cabeceras, límite de peticiones, nombres de archivo, validación estricta e historial inmutable. Lo cubre `seguridad-http.spec.ts` (9).
+  - **Capa de datos en Supabase** (D-68): esquema `lis` no publicado por la API REST; RLS en todas las tablas; `lis_app` de mínimo privilegio; TLS obligatorio. Lo cubren `verificar-bd.js` (12/12) y `bd-config.spec.ts` (5).
 - **Brecha:** falta la matriz endpoint × rol por HTTP, prevista con Postman.
 
 ### R4 — Flujo central LIS · **IMPLEMENTADO Y VERIFICADO**
@@ -73,7 +78,7 @@
   - bloqueo solo sin mediaciones en curso;
   - trazabilidad de una donación.
 - Se probó en el navegador con `db/03_demo_presentacion.sql`.
-- **Brecha:** no hay prueba de concurrencia real contra SQL Server. Por inspección, la asignación toma bloqueos `pessimistic_write` en orden fijo.
+- **Brecha:** no hay prueba de concurrencia real contra PostgreSQL. Por inspección, la asignación toma bloqueos `pessimistic_write` en orden fijo.
 
 ### R5 — Pilar A: KD-tree y prioridad · **IMPLEMENTADO Y VERIFICADO**
 

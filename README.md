@@ -9,63 +9,81 @@ Tres componentes independientes:
 |---|---|---|
 | Frontend | Angular (standalone components) | 4200 |
 | Backend | NestJS + TypeScript + TypeORM | 3000 |
-| Base de datos | SQL Server Express | 1433 |
+| Base de datos | PostgreSQL 17 en Supabase (esquema `lis`) | 5432 (Session pooler) |
 
-> **Estado verificado (2026-11-26):**
+> **Estado verificado (2026-11-27):**
 >
-> - **Pruebas:** el backend pasa **237/237 pruebas unitarias** (`npm test`, 18
+> - **Pruebas:** el backend pasa **242/242 pruebas unitarias** (`npm test`, 19
 >   suites, datos ficticios, sin BD).
-> - **Compilación:** backend y frontend compilan para producción. El bundle
->   inicial del frontend pesa 327 kB (93 kB transferidos).
-> - **Pruebas manuales:** el flujo completo se probó contra la BD de desarrollo
->   `LisDona` (SQL Server Express) y en el navegador.
-> - **Pendientes:** correo (D-53, fuera del alcance por ahora), despliegue y
->   pruebas con Postman.
+> - **Compilación:** backend y frontend compilan para producción.
+> - **Base de datos:** PostgreSQL 17 en Supabase (D-68). `verificar-bd` pasa sus
+>   12 controles de seguridad.
+> - **Prueba de humo:** `scripts/e2e/humo-postgres.js` hace 34 verificaciones
+>   HTTP → API → Supabase, todas en verde.
+> - **Pendientes:** correo (D-53, fuera del alcance por ahora) y despliegue.
 > - **Decisiones:** las vigentes están en `docs/01_decisiones_y_pendientes.md`.
->   D-54 a D-67 son las del último ciclo (estructura de páginas, plazos y
->   esperas, seguridad, textos y paleta).
 
 ---
 
 ## 1. Puesta en marcha
 
-### 1.1 Base de datos
+### 1.1 Base de datos (PostgreSQL en Supabase)
 
-No crees las tablas a mano. Ejecuta los dos scripts en orden:
+El motor de BD es libre; lo obligatorio es la arquitectura en capas (D-68). La BD
+es PostgreSQL en Supabase, en el esquema `lis`. Ese esquema **no** se publica por
+la API REST de Supabase.
+
+**1. Proyecto de Supabase.** Del panel se toman:
+
+- en *Connect → Session pooler*, el **host** (`aws-…pooler.supabase.com`,
+  puerto 5432, funciona con IPv4). La conexión directa solo tiene IPv6;
+- en *Database → SSL*, el **certificado CA**. Se copia como
+  `backend/certs/supabase-dev-ca.crt`; la carpeta no se sube al repositorio;
+- el ref del proyecto y la clave del usuario `postgres`.
+
+**2. `backend/.env`.** Ver `backend/.env.example`:
+
+| Variable | Valor |
+|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_SCHEMA` | host del pooler, `5432`, `postgres`, `lis` |
+| `DB_USER`, `DB_PASSWORD` | usuario de la aplicación `lis_app.<ref>` y una clave propia de 24 caracteres o más |
+| `DB_SSL_CA` | ruta al certificado |
+| `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD` | `postgres.<ref>` y su clave. Solo los usan los scripts, nunca el servidor |
+| `BD_PROYECTO_PERMITIDO` | el ref. Los scripts no operan sobre ningún otro proyecto |
+
+**3. Crear y verificar la BD.** Desde `backend/`:
 
 ```bash
-sqlcmd -S localhost\SQLEXPRESS -E -i db/01_schema.sql
-sqlcmd -S localhost\SQLEXPRESS -E -i db/02_seed.sql
+node scripts/db/migrar.js --estado   # migraciones aplicadas y pendientes
+node scripts/db/migrar.js            # 001 esquema, 002 datos base, 003 seguridad
+node scripts/db/usuario-app.js       # activa lis_app con DB_PASSWORD (no la imprime)
+node scripts/db/verificar-bd.js      # 12 controles de seguridad
+node scripts/db/demo.js              # datos de demostración con imágenes (§2.1)
 ```
 
-O ábrelos en SSMS / Azure Data Studio y ejecútalos completos. El primero crea la
-base `LisDona` con 12 tablas, sus llaves, CHECKs, índices, una vista de saldos y
-una vista indexada que garantiza "una sola asignación vigente por petición". El
-segundo carga los 51 grupos Sisbén, 7 categorías, 5 preguntas de caracterización
-con sus opciones y los parámetros de configuración.
+Sobre las migraciones (`db/postgres/migraciones/`):
 
-El seed termina imprimiendo un conteo: si ves `grupos_sisben = 51`, quedó bien.
-
-Después aplica las **migraciones versionadas** (`db/migraciones/003` a `014`).
-El ejecutor las registra en `ESQUEMA_VERSION`, aplica cada una en una
-transacción y solo opera sobre la base `LisDona`:
-
-```bash
-cd backend
-node scripts/db/migrar.js --estado   # ver aplicadas / pendientes
-node scripts/db/migrar.js            # aplicar las pendientes
-```
+- se registran en `lis.esquema_version` y cada una corre en una transacción;
+- si una migración ya aplicada cambia, el ejecutor se detiene;
+- los datos base son 51 grupos Sisbén, 7 categorías, 5 preguntas con 18
+  opciones y 23 parámetros.
 
 **Superusuario (D-45).** Es el único rol que gestiona administradores y nunca se
-otorga desde la interfaz. Para asignarlo, la persona inicia sesión una vez y luego
-se ejecuta `db/scripts/asignar_superusuario.sql` con su correo
-(`@accion = 'ASIGNAR'` o `'QUITAR'`).
+otorga desde la interfaz. La persona inicia sesión una vez y luego se ejecuta
+`node scripts/db/superusuario.js asignar|quitar correo@dominio`. Queda en el
+historial.
 
-**Datos de demostración.** `db/03_demo_presentacion.sql` carga un escenario
-**ficticio** con todos los casos de la presentación (ver §2.1). Es repetible:
-primero borra solo lo demo y luego lo vuelve a sembrar, en una sola transacción.
-Ejecútalo en SSMS / Azure Data Studio sobre `LisDona` **después** de las
-migraciones. Reemplaza al escenario reducido de `backend/scripts/db/demo.js`.
+**Datos de demostración.**
+
+- `node scripts/db/demo.js` carga el escenario **ficticio** de la presentación
+  (§2.1), con una imagen por producto y fotos de recepción y entrega.
+- Es repetible: borra solo lo demo y lo vuelve a sembrar, en una transacción.
+- Las imágenes están en `db/postgres/demo/imagenes/`, generadas con
+  `generar_imagenes.py`. Cualquier `.jpg` se puede cambiar por una foto real con
+  el mismo nombre (máximo 2 MB).
+
+La versión anterior en SQL Server se conserva como histórico en `db/sqlserver/`
+y `backend/scripts/db/sqlserver/`.
 
 ### 1.2 Credenciales de Google
 
@@ -91,7 +109,7 @@ npm run start:dev
 
 En `.env`, lo que no puede quedar con el valor de ejemplo:
 
-- `DB_PASSWORD` — la clave de tu SQL Server.
+- `DB_PASSWORD` — la clave de `lis_app` (la asigna `scripts/db/usuario-app.js`).
 - `GOOGLE_CLIENT_ID` — el del paso anterior.
 - `JWT_SECRET` — genéralo con `openssl rand -hex 48`. El backend se niega a
   arrancar si tiene menos de 32 caracteres.
@@ -121,23 +139,23 @@ Abre `http://localhost:4200`.
 
 Lista de verificación. Nada de esto está automatizado todavía.
 
-**Base de datos (SQL Server)**
-1. Crear la base y ejecutar `db/01_schema.sql` y `db/02_seed.sql`.
-2. Desde una máquina con acceso a esa BD: `node scripts/db/migrar.js` con el
-   `.env` apuntando a ella. Si el nombre no es `LisDona`, define
-   `BD_EXPERIMENTAL_PERMITIDA` con ese nombre.
-3. Opcional, solo para la presentación: `db/03_demo_presentacion.sql`.
-4. Hacer un respaldo (`node scripts/db/respaldar-bd.js`) antes de cada cambio.
-5. **Permisos mínimos (S4):** ejecutar `db/scripts/crear_usuario_app.sql` con
-   un administrador. El backend se conecta como `lis_app` (lee y escribe datos,
-   sin DDL y sin poder modificar el historial); las migraciones se siguen
-   ejecutando con el usuario administrador.
+**Base de datos (Supabase)**
+1. La presentación usa el mismo proyecto de Supabase ya creado y verificado
+   (§1.1). Para un proyecto nuevo, se repiten los pasos de §1.1 con su host, su
+   certificado y su ref en `BD_PROYECTO_PERMITIDO`.
+2. En *API → Settings → Exposed schemas*, comprobar que `lis` **no** aparece.
+3. Los respaldos los hace Supabase. Antes de un cambio grande, se puede exportar
+   con `pg_dump` usando la cadena del administrador.
 
 **Backend (NestJS)**
 1. Variables de entorno, **no** un `.env` subido al repositorio. Ver
-   `backend/.env.example`. En producción: `NODE_ENV=production`, `JWT_SECRET`
-   nuevo y largo, `CORS_ORIGINS` = URL pública del frontend, `ADMIN_EMAILS`,
-   credenciales de la BD (`DB_ENCRYPT=true` si el servidor lo exige).
+   `backend/.env.example`. En producción:
+   - `NODE_ENV=production` y un `JWT_SECRET` nuevo y largo;
+   - `CORS_ORIGINS` = URL pública del frontend, y `ADMIN_EMAILS`;
+   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_SCHEMA`, `DB_USER` y `DB_PASSWORD`
+     de `lis_app`. **Nunca** el usuario administrador;
+   - `DB_SSL_CA_PEM` con el contenido del certificado. Los saltos de línea se
+     pueden escribir como `\n`. Sin certificado, el backend no arranca.
 2. `npm ci && npm run build && npm run start:prod`, que sirve en `PORT` con el
    prefijo `/api`.
 3. Detrás del proxy del hosting: `TRUST_PROXY=1`, para que el límite de
@@ -211,7 +229,7 @@ El flujo completo, en el orden en que conviene mostrarlo:
 Para repartir una donación entre varios estudiantes, asigna cantidades parciales
 de la misma oferta a peticiones distintas: el saldo se recalcula solo.
 
-### 2.1 Escenario de demostración (`db/03_demo_presentacion.sql`)
+### 2.1 Escenario de demostración (`node scripts/db/demo.js`)
 
 Todo es ficticio y está marcado con `[DEMO]`. Las cuentas demo no pueden iniciar
 sesión: entra con tu cuenta de administrador para ver el LIS. Después de cargarlo,
@@ -227,19 +245,22 @@ en *Entregas y plazos* pulsa **Revisar ahora** para generar las tareas vencidas.
 | Analítica | Estudiantes **en riesgo** resaltados (filtro *Solo en riesgo*); el aviso llega a la bandeja del personal del LIS tras *Revisar ahora* (D-55). Ranking de donadores con ★ recurrente, cumplimiento y alertas por fallas |
 | Usuarios | Superusuario, administrador, auxiliares, cuenta bloqueada, y certificados validado, pendiente y **rechazado (docente)** (D-46); estudiante con 5 peticiones abiertas (límite) |
 
-Para mostrar también las pantallas del **donador** (propuesta LOCAL para
-aceptar o rechazar, foto de la entrega en la bandeja) y del **estudiante**
-(producto listo para recoger), escribe tus correos reales en
-`@email_donador_real` y `@email_estudiante_real` al inicio del script. Esas
-cuentas deben haber iniciado sesión al menos una vez.
+Para mostrar también las pantallas del **donador** y del **estudiante**:
+
+1. Pon tus correos reales en `DEMO_EMAIL_DONADOR` y `DEMO_EMAIL_ESTUDIANTE` del
+   `.env`. Esas cuentas deben haber iniciado sesión al menos una vez.
+2. Vuelve a ejecutar el script.
+
+El donador verá una propuesta de Local para aceptar o rechazar y la foto de la
+entrega en su bandeja. El estudiante verá un producto listo para recoger.
 
 ---
 
 ## 3. Modelo de datos
 
-22 tablas: `db/01_schema.sql` más las migraciones 003 a 014. Los saldos **no se
+22 tablas en el esquema `lis`: `db/postgres/migraciones/001_esquema.sql`. Los saldos **no se
 almacenan**: se derivan de los intentos de asignación y de los lotes físicos
-(`VW_OFERTA_SALDO`), de modo que hay una sola fuente de verdad.
+(`vw_oferta_saldo`), de modo que hay una sola fuente de verdad.
 
 | Grupo | Tablas |
 |---|---|
@@ -248,7 +269,7 @@ almacenan**: se derivan de los intentos de asignación y de los lotes físicos
 | Flujo central | `CATEGORIA`, `OFERTA`, `PETICION`, `OFERTA_X_PETICION` |
 | Ubicación física y Local | `LOTE_FISICO`, `DESTINO_LOCAL`, `MOVIMIENTO`, `EVIDENCIA` |
 | Ciclo de vida | `TAREA`, `NOTIFICACION`, `CORREO_SALIDA`, `CIERRE_LIS`, `PARAMETRO` |
-| Auditoría | `HISTORIAL_ESTADO` (inmutable: el trigger `TR_HISTORIAL_INMUTABLE` rechaza `UPDATE` y `DELETE`) |
+| Auditoría | `HISTORIAL_ESTADO` (inmutable: un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE`) |
 
 ```
 USUARIO ──< USUARIO_ROL
@@ -306,15 +327,15 @@ mismo que cancelar el vínculo.
 | Invariante | Dónde se garantiza |
 |---|---|
 | Σ cantidades asignadas ≤ cantidad de la oferta | transacción con bloqueo de filas en orden fijo |
-| Una sola asignación vigente por petición | vista indexada `VW_OXP_VIGENTE` + comprobación en la transacción |
+| Una sola asignación vigente por petición | índice único parcial `ux_oxp_vigente_por_peticion` + comprobación en la transacción |
 | Máximo 5 peticiones abiertas por estudiante | `MAX_PETICIONES_ACTIVAS` en `PARAMETRO`, verificado al crear |
 | Toda recepción y entrega tiene fotografía | `MOVIMIENTO.evidencia_id NOT NULL` |
 | Una petición activa fue revisada por alguien | `CK_PETICION_revision` |
 | Quien aprueba no es quien publicó | comprobado en el servicio |
 | Nunca queda la plataforma sin administradores | comprobado al revocar y al bloquear |
-| Un lote físico tiene un solo titular vigente (intento o Local) | vistas indexadas `VW_LOTE_TITULAR_OXP` y `VW_LOTE_TITULAR_LOCAL` |
-| Una tarea o un aviso no se duplican | índices únicos `UX_TAREA_clave` y `UX_NOTIF_usuario_clave` |
-| El historial no se altera | trigger `TR_HISTORIAL_INMUTABLE` (migración 014) |
+| Un lote físico tiene un solo titular vigente (intento o Local) | índices únicos parciales `ux_lote_titular_oxp` y `ux_lote_titular_local` |
+| Una tarea o un aviso no se duplican | índices únicos `ux_tarea_clave` y `ux_notif_usuario_clave` |
+| El historial no se altera | triggers `tr_historial_inmutable` y `tr_historial_sin_truncate`, y `lis_app` sin UPDATE ni DELETE |
 | Una tarea se cierra con la acción que la resuelve | `cerrarTareasDe` en la misma transacción (D-56) |
 | Una cuenta con mediaciones en curso no se bloquea | `UsuariosService.bloquear`, que además cierra sus publicaciones (D-64) |
 
@@ -423,7 +444,7 @@ necesita dos cuentas de Google. Los roles son aditivos:
 |---|---|---|
 | `AUXILIAR_LIS` | un administrador. Solo a cuentas no institucionales. | Operación del LIS |
 | `ADMINISTRADOR` | el primero sale de `ADMIN_EMAILS`; los demás los otorga solo un superusuario | Caracterización sensible, usuarios, Local para el LIS, trazabilidad |
-| `SUPERUSUARIO` | **solo por script de BD** (`db/scripts/asignar_superusuario.sql`, D-45) | Gestiona a los administradores; hereda todo |
+| `SUPERUSUARIO` | **solo por script** (`scripts/db/superusuario.js`, D-45) | Gestiona a los administradores; hereda todo |
 
 Tras verificar el token, el backend emite su propio JWT (8 h) con el id de
 usuario, el perfil y los roles. El frontend lo guarda y lo adjunta en cada
@@ -443,7 +464,11 @@ Otras defensas del backend (D-65):
 - límite de peticiones por IP (login 10/min, fotos 30, certificado 10,
   general 300) con respuesta 429;
 - nombres de archivo saneados en las descargas;
-- un usuario de BD con mínimo privilegio (`db/scripts/crear_usuario_app.sql`).
+- en la BD:
+  - el usuario de la aplicación `lis_app` con mínimo privilegio;
+  - RLS en todas las tablas;
+  - el esquema `lis` sin acceso para los roles públicos de Supabase;
+  - TLS verificado (`db/postgres/migraciones/003_seguridad.sql`).
 
 ### Matriz de visibilidad
 
@@ -455,7 +480,7 @@ Otras defensas del backend (D-65):
 | Auxiliar LIS | sí | sí | **no** |
 | Administrador | sí | sí | sí |
 
-Las fotografías se guardan dentro de SQL Server (`VARBINARY(MAX)` con MIME,
+Las fotografías se guardan dentro de la BD (`bytea` con MIME,
 tamaño y hash SHA-256) y nunca se sirven como URL pública: pasan por
 `GET /api/evidencias/:id`, que decide caso por caso quién puede verlas. La foto
 de una oferta aprobada es visible porque muestra el producto. La de un
@@ -578,7 +603,7 @@ el MVP funcionara. Conviene revisarlos con el equipo y con el profesor.
 8. **Primer administrador:** sale de `ADMIN_EMAILS`. Si ese correo es
    institucional, su perfil será ESTUDIANTE y además tendrá el rol
    ADMINISTRADOR; el rol no depende del perfil.
-9. **Fotografías:** JPEG, PNG o WebP, máximo 2 MB, dentro de SQL Server.
+9. **Fotografías:** JPEG, PNG o WebP, máximo 2 MB, dentro de la BD (`bytea`). Supabase Storage queda para después (P-61).
 10. **Plazos de las esperas:** los valores de la tabla del §3 (5 días hábiles, 2
     esperas, 1 prórroga, etc.) se acordaron con el equipo. Un panel para que el
     administrador los edite queda fuera del alcance (P-60).
@@ -633,8 +658,8 @@ a mano contra la BD de desarrollo.
 - **Eliminación excepcional con reautenticación de Google** (D-30, P-14): no
   implementada.
 - **Panel de parámetros para el administrador** (P-60).
-- **Despliegue, pruebas con Postman y migración a PostgreSQL/Supabase:** fases
-  siguientes.
+- **Despliegue del backend y el frontend, y pruebas con Postman:** fases
+  siguientes. La BD ya está en Supabase (D-68).
 - **`npm audit` del backend:** 6 avisos en dependencias. El más alto es
   nodemailer, que solo afecta al correo, hoy apagado. Falta aplicar
   `npm audit fix`, que requiere aprobación.
@@ -667,7 +692,7 @@ a mano contra la BD de desarrollo.
 
 ```bash
 cd backend
-npm test        # 237 pruebas unitarias en 18 suites, datos ficticios, sin BD
+npm test        # 242 pruebas unitarias en 19 suites, datos ficticios, sin BD
 npx ts-node --transpile-only scripts/benchmark-kdtree.ts lis         # benchmark, datos tipo LIS
 npx ts-node --transpile-only scripts/benchmark-kdtree.ts selectivo   # benchmark, consultas selectivas
 ```
@@ -679,10 +704,21 @@ npx ts-node --transpile-only scripts/benchmark-kdtree.ts selectivo   # benchmark
 | `kdtree`, `prioridad` | Árbol frente a filtro lineal, compatibilidad 3D y 2D, fórmula de prioridad |
 | `calendario`, `pilares-b-c`, `tareas/*`, `local-notificaciones` | Días hábiles y festivos, plazos, esperas y prórrogas, tareas, Local, avisos, ranking y alertas |
 | `certificado`, `trazabilidad` | Certificado de estudio, línea de tiempo de una donación |
+| `bd-config` | TLS obligatorio hacia la BD, opciones de TypeORM, duplicados de Postgres (23505) |
+
+Prueba de humo contra la BD de desarrollo. Escribe solo sobre datos demo, así
+que después hay que recargar la demo:
+
+```bash
+node scripts/db/demo.js && PORT=3100 node dist/main.js     # en otra terminal: la API
+node scripts/e2e/humo-postgres.js                           # 34 verificaciones HTTP -> API -> Supabase
+node scripts/db/demo.js                                     # dejar la demo como estaba
+```
 
 ## 11. Motor de base de datos y lenguaje del backend
 
 El motor de BD es libre: MySQL era la idea inicial, no una obligación. Lo
-obligatorio es la **arquitectura en capas** (D-68). Para el despliegue, la BD pasa
-de SQL Server a **PostgreSQL en Supabase** (rama `migracion-postgres`). El
-backend está en TypeScript, que compila a JavaScript (D-32).
+obligatorio es la **arquitectura en capas** (D-68). La BD pasó de SQL Server a
+**PostgreSQL en Supabase**, con las mismas reglas e invariantes y la seguridad
+adaptada a Supabase (`003_seguridad.sql`). El backend está en TypeScript, que
+compila a JavaScript (D-32).
