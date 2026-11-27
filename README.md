@@ -680,9 +680,9 @@ npx ts-node --transpile-only scripts/benchmark-kdtree.ts selectivo   # benchmark
 | `calendario`, `pilares-b-c`, `tareas/*`, `local-notificaciones` | Días hábiles y festivos, plazos, esperas y prórrogas, tareas, Local, avisos, ranking y alertas |
 | `certificado`, `trazabilidad` | Certificado de estudio, línea de tiempo de una donación |
 
-## 11. Pendiente de confirmar con el profesor
+## 11. Motor de base de datos y lenguaje del backend
 
-El anteproyecto registra que las directrices pedían **MySQL y JavaScript**,
-mientras que el equipo decidió **SQL Server y TypeScript** (D-31, D-32). Conviene
-tener esa autorización por escrito como evidencia de la rúbrica antes de la
-sustentación.
+El motor de BD es libre: MySQL era la idea inicial, no una obligación. Lo
+obligatorio es la **arquitectura en capas** (D-68). Para el despliegue, la BD pasa
+de SQL Server a **PostgreSQL en Supabase** (rama `migracion-postgres`). El
+backend está en TypeScript, que compila a JavaScript (D-32).
