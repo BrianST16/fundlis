@@ -21,37 +21,14 @@ import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { TareasModule } from './tareas/tareas.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { TrazabilidadModule } from './trazabilidad/trazabilidad.module';
+import { opcionesBaseDatos } from './common/bd-config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'mssql' as const,
-        host: config.get<string>('DB_HOST') || 'localhost',
-        port: Number(config.get<string>('DB_PORT')) || 1433,
-        username: config.get<string>('DB_USER'),
-        password: config.get<string>('DB_PASSWORD'),
-        database: config.get<string>('DB_NAME') || 'LisDona',
-        // El esquema lo crean los scripts de db/. Nunca se sincroniza
-        // automaticamente: evita que TypeORM altere tablas en produccion.
-         extra: {
-          integratedSecurity: false, // Fuerza el uso de SQL Server Authentication
-          encrypt: false,            // El .env ya lo tiene en false
-          trustServerCertificate: true // El .env ya lo tiene en true
-          },
-        synchronize: false,
-        autoLoadEntities: true,
-        logging: config.get<string>('NODE_ENV') !== 'production' ? ['error', 'warn'] : ['error'],
-        options: {
-          encrypt: config.get<string>('DB_ENCRYPT') === 'true',
-          trustServerCertificate: config.get<string>('DB_TRUST_SERVER_CERT') !== 'false',
-          instanceName: config.get<string>('DB_INSTANCE') || undefined,
-          enableArithAbort: true,
-        },
-        pool: { max: 10, min: 1, idleTimeoutMillis: 30_000 },
-      }),
+      useFactory: (config: ConfigService) => opcionesBaseDatos((k) => config.get<string>(k)),
     }),
     CommonModule,
     NotificacionesModule,

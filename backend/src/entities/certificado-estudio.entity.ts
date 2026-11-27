@@ -8,7 +8,7 @@ export type EstadoRevisionCertificado = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO';
  * ven su dueno y el ADMINISTRADOR. Va en tabla propia (no en EVIDENCIA)
  * para no heredar las reglas de acceso del personal LIS.
  */
-@Entity('CERTIFICADO_ESTUDIO')
+@Entity('certificado_estudio')
 export class CertificadoEstudio {
   @PrimaryGeneratedColumn()
   id: number;
@@ -20,7 +20,7 @@ export class CertificadoEstudio {
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
 
-  @Column({ name: 'contenido', type: 'varbinary', length: 'MAX', select: false })
+  @Column({ name: 'contenido', type: 'bytea', select: false })
   contenido: Buffer;
 
   @Column({ name: 'mime', type: 'varchar', length: 100 })
@@ -32,10 +32,10 @@ export class CertificadoEstudio {
   @Column({ name: 'hash_sha256', type: 'char', length: 64 })
   hashSha256: string;
 
-  @Column({ name: 'nombre_original', type: 'nvarchar', length: 260, nullable: true })
+  @Column({ name: 'nombre_original', type: 'varchar', length: 260, nullable: true })
   nombreOriginal: string | null;
 
-  @Column({ name: 'subido_en', type: 'datetime2' })
+  @Column({ name: 'subido_en', type: 'timestamptz' })
   subidoEn: Date;
 
   @Column({ name: 'estado_revision', type: 'varchar', length: 12, default: 'PENDIENTE' })
@@ -44,9 +44,9 @@ export class CertificadoEstudio {
   @Column({ name: 'revisado_por', type: 'int', nullable: true })
   revisadoPor: number | null;
 
-  @Column({ name: 'revisado_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'revisado_en', type: 'timestamptz', nullable: true })
   revisadoEn: Date | null;
 
-  @Column({ name: 'observacion', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'observacion', type: 'varchar', length: 400, nullable: true })
   observacion: string | null;
 }

@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 /** Cierre del LIS (vacaciones, cierres administrativos). */
-@Entity('CIERRE_LIS')
+@Entity('cierre_lis')
 export class CierreLis {
   @PrimaryGeneratedColumn()
   id: number;
@@ -13,13 +13,13 @@ export class CierreLis {
   @Column({ name: 'hasta', type: 'date' })
   hasta: string;
 
-  @Column({ name: 'motivo', type: 'nvarchar', length: 200 })
+  @Column({ name: 'motivo', type: 'varchar', length: 200 })
   motivo: string;
 
   @Column({ name: 'creado_por', type: 'int', nullable: true })
   creadoPor: number | null;
 
-  @CreateDateColumn({ name: 'creado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
   creadoEn: Date;
 }
 
@@ -39,7 +39,7 @@ export type DecisionTarea =
   | 'SIN_ACCION';
 
 /** Tarea DEFINIR_ESTADO (D-23). Idempotente por clave. */
-@Entity('TAREA')
+@Entity('tarea')
 export class Tarea {
   @PrimaryGeneratedColumn()
   id: number;
@@ -68,24 +68,24 @@ export class Tarea {
   @Column({ name: 'estado', type: 'varchar', length: 10, default: 'ABIERTA' })
   estado: 'ABIERTA' | 'RESUELTA';
 
-  @CreateDateColumn({ name: 'creada_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creada_en', type: 'timestamptz' })
   creadaEn: Date;
 
   @Column({ name: 'resuelta_por', type: 'int', nullable: true })
   resueltaPor: number | null;
 
-  @Column({ name: 'resuelta_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'resuelta_en', type: 'timestamptz', nullable: true })
   resueltaEn: Date | null;
 
   @Column({ name: 'decision', type: 'varchar', length: 30, nullable: true })
   decision: DecisionTarea | null;
 
-  @Column({ name: 'motivo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo', type: 'varchar', length: 400, nullable: true })
   motivo: string | null;
 }
 
 /** Bandeja interna: una fila por destinatario (D-42). */
-@Entity('NOTIFICACION')
+@Entity('notificacion')
 export class Notificacion {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
@@ -96,10 +96,10 @@ export class Notificacion {
   @Column({ name: 'tipo', type: 'varchar', length: 40 })
   tipo: string;
 
-  @Column({ name: 'titulo', type: 'nvarchar', length: 200 })
+  @Column({ name: 'titulo', type: 'varchar', length: 200 })
   titulo: string;
 
-  @Column({ name: 'mensaje', type: 'nvarchar', length: 1000 })
+  @Column({ name: 'mensaje', type: 'varchar', length: 1000 })
   mensaje: string;
 
   @Column({ name: 'entidad', type: 'varchar', length: 20, nullable: true })
@@ -115,17 +115,17 @@ export class Notificacion {
   @Column({ name: 'evidencia_id', type: 'int', nullable: true })
   evidenciaId: number | null;
 
-  @CreateDateColumn({ name: 'creada_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creada_en', type: 'timestamptz' })
   creadaEn: Date;
 
-  @Column({ name: 'leida_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'leida_en', type: 'timestamptz', nullable: true })
   leidaEn: Date | null;
 }
 
 export type EstadoCorreo = 'PENDIENTE' | 'ENVIADO' | 'ERROR' | 'SIN_CONFIGURACION' | 'DESCARTADO';
 
 /** Correo saliente (outbox) con reintentos. */
-@Entity('CORREO_SALIDA')
+@Entity('correo_salida')
 export class CorreoSalida {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
@@ -136,10 +136,10 @@ export class CorreoSalida {
   @Column({ name: 'destinatario', type: 'varchar', length: 320 })
   destinatario: string;
 
-  @Column({ name: 'asunto', type: 'nvarchar', length: 200 })
+  @Column({ name: 'asunto', type: 'varchar', length: 200 })
   asunto: string;
 
-  @Column({ name: 'cuerpo', type: 'nvarchar', length: 'MAX' })
+  @Column({ name: 'cuerpo', type: 'text' })
   cuerpo: string;
 
   @Column({ name: 'estado', type: 'varchar', length: 20, default: 'PENDIENTE' })
@@ -148,15 +148,15 @@ export class CorreoSalida {
   @Column({ name: 'intentos', type: 'int', default: 0 })
   intentos: number;
 
-  @Column({ name: 'ultimo_error', type: 'nvarchar', length: 500, nullable: true })
+  @Column({ name: 'ultimo_error', type: 'varchar', length: 500, nullable: true })
   ultimoError: string | null;
 
-  @Column({ name: 'proximo_intento_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'proximo_intento_en', type: 'timestamptz', nullable: true })
   proximoIntentoEn: Date | null;
 
-  @Column({ name: 'enviado_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'enviado_en', type: 'timestamptz', nullable: true })
   enviadoEn: Date | null;
 
-  @CreateDateColumn({ name: 'creado_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'creado_en', type: 'timestamptz' })
   creadoEn: Date;
 }

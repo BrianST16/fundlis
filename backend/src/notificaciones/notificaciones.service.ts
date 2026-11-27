@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { esViolacionUnica } from '../common/errores-bd';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { Rol } from '../common/enums';
@@ -109,9 +110,8 @@ export class NotificacionesService {
         }),
       );
     } catch (e: any) {
-      // 2601/2627: violacion de unicidad -> otro proceso ya la creo (idempotencia).
-      const numero = e?.number ?? e?.originalError?.info?.number;
-      if (numero === 2601 || numero === 2627) return false;
+      // Violacion de unicidad: otro proceso ya la creo (idempotencia).
+      if (esViolacionUnica(e)) return false;
       throw e;
     }
 

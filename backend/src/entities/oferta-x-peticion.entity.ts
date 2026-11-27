@@ -11,7 +11,7 @@ import { Usuario } from './usuario.entity';
  *  EN_CUSTODIA). Lo garantiza la base de datos mediante la vista indexada
  *  VW_OXP_VIGENTE con indice unico agrupado sobre peticion_id, de modo que
  *  los intentos anteriores se conservan como historial. */
-@Entity('OFERTA_X_PETICION')
+@Entity('oferta_x_peticion')
 export class OfertaXPeticion {
   @PrimaryGeneratedColumn()
   id: number;
@@ -48,19 +48,19 @@ export class OfertaXPeticion {
   @JoinColumn({ name: 'asignada_por' })
   asignador: Usuario;
 
-  @CreateDateColumn({ name: 'asignada_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'asignada_en', type: 'timestamptz' })
   asignadaEn: Date;
 
-  @Column({ name: 'recibida_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'recibida_en', type: 'timestamptz', nullable: true })
   recibidaEn: Date | null;
 
-  @Column({ name: 'entregada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'entregada_en', type: 'timestamptz', nullable: true })
   entregadaEn: Date | null;
 
-  @Column({ name: 'cerrada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'cerrada_en', type: 'timestamptz', nullable: true })
   cerradaEn: Date | null;
 
-  @Column({ name: 'motivo_cierre', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo_cierre', type: 'varchar', length: 400, nullable: true })
   motivoCierre: string | null;
 
   // --- Componentes de prioridad conservados al asignar (D-38) ---
@@ -87,7 +87,7 @@ export class OfertaXPeticion {
   origen: 'DONADOR' | 'REASIGNACION';
 
   /** Inicio del plazo de recogida del estudiante. */
-  @Column({ name: 'custodia_desde', type: 'datetime2', nullable: true })
+  @Column({ name: 'custodia_desde', type: 'timestamptz', nullable: true })
   custodiaDesde: Date | null;
 
   // --- Prorrogas (aplazamiento del donador / extension del estudiante) ---

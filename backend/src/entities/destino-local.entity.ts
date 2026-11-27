@@ -20,7 +20,7 @@ export type EstadoLocal =
  * ACEPTADO (donativo institucional permanente) solo con autorizacion del
  * administrador.
  */
-@Entity('DESTINO_LOCAL')
+@Entity('destino_local')
 export class DestinoLocal {
   @PrimaryGeneratedColumn()
   id: number;
@@ -52,29 +52,29 @@ export class DestinoLocal {
   @Column({ name: 'seleccionado_por', type: 'int' })
   seleccionadoPor: number;
 
-  @Column({ name: 'seleccionado_en', type: 'datetime2' })
+  @Column({ name: 'seleccionado_en', type: 'timestamptz' })
   seleccionadoEn: Date;
 
-  @Column({ name: 'motivo', type: 'nvarchar', length: 400 })
+  @Column({ name: 'motivo', type: 'varchar', length: 400 })
   motivo: string;
 
-  @Column({ name: 'custodia_desde', type: 'datetime2', nullable: true })
+  @Column({ name: 'custodia_desde', type: 'timestamptz', nullable: true })
   custodiaDesde: Date | null;
 
   @Column({ name: 'aceptacion_solicitada_por', type: 'int', nullable: true })
   aceptacionSolicitadaPor: number | null;
 
-  @Column({ name: 'aceptacion_solicitada_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'aceptacion_solicitada_en', type: 'timestamptz', nullable: true })
   aceptacionSolicitadaEn: Date | null;
 
   @Column({ name: 'aceptado_por', type: 'int', nullable: true })
   aceptadoPor: number | null;
 
-  @Column({ name: 'aceptado_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'aceptado_en', type: 'timestamptz', nullable: true })
   aceptadoEn: Date | null;
 
   // --- D-50: propuesta al donador (aceptacion_solicitada_* = admin que propone) ---
-  @Column({ name: 'propuesta_motivo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'propuesta_motivo', type: 'varchar', length: 400, nullable: true })
   propuestaMotivo: string | null;
 
   /** Fecha civil AAAA-MM-DD (dias habiles, America/Bogota). */
@@ -84,15 +84,15 @@ export class DestinoLocal {
   @Column({ name: 'respuesta_donador', type: 'varchar', length: 10, nullable: true })
   respuestaDonador: 'ACEPTA' | 'RECHAZA' | null;
 
-  @Column({ name: 'respuesta_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'respuesta_en', type: 'timestamptz', nullable: true })
   respuestaEn: Date | null;
 
-  @Column({ name: 'respuesta_motivo', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'respuesta_motivo', type: 'varchar', length: 400, nullable: true })
   respuestaMotivo: string | null;
 
-  @Column({ name: 'cerrado_en', type: 'datetime2', nullable: true })
+  @Column({ name: 'cerrado_en', type: 'timestamptz', nullable: true })
   cerradoEn: Date | null;
 
-  @Column({ name: 'motivo_cierre', type: 'nvarchar', length: 400, nullable: true })
+  @Column({ name: 'motivo_cierre', type: 'varchar', length: 400, nullable: true })
   motivoCierre: string | null;
 }

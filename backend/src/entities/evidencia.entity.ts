@@ -3,12 +3,12 @@ import { Usuario } from './usuario.entity';
 
 /** Fotografia de evidencia. Se guarda dentro de SQL Server y solo se
  *  sirve por un endpoint autenticado: nunca como URL publica. */
-@Entity('EVIDENCIA')
+@Entity('evidencia')
 export class Evidencia {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'contenido', type: 'varbinary', length: 'MAX', select: false })
+  @Column({ name: 'contenido', type: 'bytea', select: false })
   contenido: Buffer;
 
   @Column({ name: 'mime', type: 'varchar', length: 100 })
@@ -20,7 +20,7 @@ export class Evidencia {
   @Column({ name: 'hash_sha256', type: 'char', length: 64 })
   hashSha256: string;
 
-  @Column({ name: 'nombre_original', type: 'nvarchar', length: 260, nullable: true })
+  @Column({ name: 'nombre_original', type: 'varchar', length: 260, nullable: true })
   nombreOriginal: string | null;
 
   @Column({ name: 'subida_por', type: 'int' })
@@ -30,6 +30,6 @@ export class Evidencia {
   @JoinColumn({ name: 'subida_por' })
   usuario: Usuario;
 
-  @CreateDateColumn({ name: 'subida_en', type: 'datetime2' })
+  @CreateDateColumn({ name: 'subida_en', type: 'timestamptz' })
   subidaEn: Date;
 }
