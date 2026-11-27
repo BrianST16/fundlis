@@ -29,8 +29,13 @@ async function bootstrap() {
   // CORS restringido a los origenes declarados. Sin comodines.
   const origenes = (config.get<string>('CORS_ORIGINS') || 'http://localhost:4200')
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+  // El navegador envia el origen con esquema (https://...). Uno sin esquema
+  // nunca coincide y el frontend veria "0 Unknown Error".
+  for (const o of origenes.filter((x) => !/^https?:\/\//.test(x))) {
+    log.warn(`CORS_ORIGINS: "${o}" no empieza por https:// o http://; el navegador nunca coincidirá con ese origen.`);
+  }
   app.enableCors({
     origin: origenes,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
